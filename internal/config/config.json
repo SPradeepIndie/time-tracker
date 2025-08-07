@@ -1,0 +1,4 @@
+{
+  "postgres_dsn": "postgres://postgres:postgres@localhost:5432/tasks?sslmode=disable",
+  "port": "8080"
+}
