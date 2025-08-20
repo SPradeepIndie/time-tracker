@@ -1,4 +1,8 @@
 {
-  "postgres_dsn": "postgres://postgres:postgres@localhost:5432/tasks?sslmode=disable",
-  "port": "8080"
+  "host": "localhost",
+  "port": 5432,
+  "user": "postgres",
+  "password": "postgres",
+  "dbname": "tasks",
+  "app_port": "8080"
 }
