@@ -11,8 +11,12 @@ var configFS embed.FS
 
 // Config holds application configuration values.
 type Config struct {
-	PostgresDSN string `json:"postgres_dsn"`
-	Port        string `json:"port"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	User     string `json:"user"`
+	Password string `json:"password"`
+	Dbname   string `json:"dbname"`
+	AppPort  string `json:"app_port"`
 }
 
 var cfg *Config
@@ -34,12 +38,12 @@ func LoadConfig() (*Config, error) {
 	return cfg, nil
 }
 
-// GetPostgresDSN returns the Postgres DSN from config.
+// GetPostgresDSN builds and returns the Postgres DSN from config fields.
 func (c *Config) GetPostgresDSN() string {
-	return c.PostgresDSN
+	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable", c.User, c.Password, c.Host, c.Port, c.Dbname)
 }
 
 // GetPort returns the server port from config.
 func (c *Config) GetPort() string {
-	return c.Port
+	return c.AppPort
 }
