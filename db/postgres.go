@@ -32,12 +32,13 @@ func (i *postgres) Connect() error {
 		return nil
 	}
 
-	connStr := i.createConnStr()
-	db, err := sql.Open("postgres", connStr)
+	db, err := sql.Open("postgres", i.createConnStr())
+
 	if err != nil {
 		return errorutil.Wrap(err, "failed to connect to PostgreSQL")
 	}
 
+	i.db = db
 	db.SetMaxOpenConns(4)
 	db.SetMaxIdleConns(2)
 
@@ -45,7 +46,6 @@ func (i *postgres) Connect() error {
 		return errorutil.Wrap(err, "failed to ping PostgreSQL")
 	}
 
-	i.db = db
 	return nil
 }
 
