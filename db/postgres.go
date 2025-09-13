@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"timetracker/errorutil"
+	"timetracker/logger"
 
 	_ "github.com/lib/pq"
 )
@@ -27,15 +28,17 @@ func Postgres(param PostgresParam) *postgres {
 	}
 }
 
-func (i *postgres) Connect() error {
+func (i *postgres) Connect(logger *logger.Logger) error {
 	if i.db != nil {
 		return nil
 	}
 
+	logger.Infof("Connecting to postgres at %s:%d...\n", i.param.Host, i.param.Port)
+
 	db, err := sql.Open("postgres", i.createConnStr())
 
 	if err != nil {
-		return errorutil.Wrap(err, "failed to connect to PostgreSQL")
+		return errorutil.Wrap(err, "failed to connect to postgres")
 	}
 
 	i.db = db
@@ -43,30 +46,25 @@ func (i *postgres) Connect() error {
 	db.SetMaxIdleConns(2)
 
 	if err := db.Ping(); err != nil {
-		return errorutil.Wrap(err, "failed to ping PostgreSQL")
+		return errorutil.Wrap(err, "failed to ping postgres")
 	}
 
+	i.db = db
+
+	logger.Infof("Connected to postgres successfully.\n")
 	return nil
 }
 
-func (i *postgres) Ping() error {
+func (i *postgres) GetDB() *sql.DB {
+	return i.db
+}
+
+func (i *postgres) Ping(logger *logger.Logger) error {
+	logger.Infof("Pinging the database...\n")
 	if i.db == nil {
 		return errorutil.New("database connection is not established")
 	}
 	return i.db.Ping()
-}
-
-// Migrate creates the tracker table if it does not exist.
-func Migrate(db *sql.DB) error {
-	query := `
-	   CREATE TABLE IF NOT EXISTS tracker (
-		   id SERIAL PRIMARY KEY,
-		   task TEXT NOT NULL,
-		   start_time TIMESTAMP NOT NULL,
-		   end_time TIMESTAMP
-	   );`
-	_, err := db.Exec(query)
-	return err
 }
 
 func (i *postgres) Close() error {
