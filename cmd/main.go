@@ -1,43 +1,51 @@
+/*
+ *  Copyright © 2025 My personal.
+ *
+ * All rights reserved.
+ */
 package main
 
 import (
-	"log"
+	"fmt"
 	"timetracker/db"
+	"timetracker/db/model"
 	"timetracker/internal/config"
+	"timetracker/logger"
 )
 
 func main() {
 	// Load config using constructor
 	cfg, err := config.LoadConfig()
+
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		fmt.Printf("Failed to load config: %v", err)
 	}
-	if cfg.GetPostgresDSN() == "" {
-		log.Fatal("postgres_dsn is required in config.json")
-	}
+
+	logger := logger.NewLogger("app", "./run-time.log")
 
 	postgres := db.Postgres(db.PostgresParam{
-		Host:     "",
-		Port:     0,
-		User:     "",
-		Password: "",
-		Dbname:   "",
+		Host:     cfg.Host,
+		Port:     cfg.Port,
+		User:     cfg.User,
+		Password: cfg.Password,
+		Dbname:   cfg.Dbname,
 	})
 
-	if err := postgres.Connect(); err != nil {
-		log.Fatalf("Failed to connect to DB: %v", err)
+	if err := postgres.Connect(logger); err != nil {
+		logger.Errorf("Failed to connect to DB: %v", err)
 	}
 
 	defer func() {
 		if err := postgres.Close(); err != nil {
-			log.Printf("Error closing DB: %v", err)
+			logger.Errorf("Error closing DB: %v", err)
 		}
+		logger.Infof("Database connection closed.\n")
 	}()
 
-	// // Run DB migration
-	// if err := db.Migrate(connection); err != nil {
-	// 	log.Fatalf("Failed to migrate database: %v", err)
-	// }
+	// Run DB migration
+	if err := model.Migrate(postgres.GetDB()); err != nil {
+		logger.Errorf("Failed to migrate database: %v", err)
+	}
 
 	// mux := http.NewServeMux()
 	// // Pass DB to handler via closure

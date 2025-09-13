@@ -1,3 +1,8 @@
+/*
+ *  Copyright © 2025 My personal.
+ *
+ * All rights reserved.
+ */
 package config
 
 import (
@@ -11,6 +16,7 @@ var configFS embed.FS
 
 // Config holds application configuration values.
 type Config struct {
+	DBType   string `json:"dbtype"`
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
 	User     string `json:"user"`
@@ -36,14 +42,4 @@ func LoadConfig() (*Config, error) {
 	}
 	cfg = &c
 	return cfg, nil
-}
-
-// GetPostgresDSN builds and returns the Postgres DSN from config fields.
-func (c *Config) GetPostgresDSN() string {
-	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable", c.User, c.Password, c.Host, c.Port, c.Dbname)
-}
-
-// GetPort returns the server port from config.
-func (c *Config) GetPort() string {
-	return c.AppPort
 }
