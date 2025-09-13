@@ -46,37 +46,4 @@ func main() {
 	if err := model.Migrate(postgres.GetDB()); err != nil {
 		logger.Errorf("Failed to migrate database: %v", err)
 	}
-
-	// mux := http.NewServeMux()
-	// // Pass DB to handler via closure
-	// mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-	// 	api.HealthCheckHandler(w, r, connection)
-	// })
-
-	// port := cfg.Port
-	// if port == "" {
-	// 	port = "8080"
-	// }
-	// srv := &http.Server{
-	// 	Addr:    ":" + port,
-	// 	Handler: mux,
-	// }
-
-	// // Graceful shutdown
-	// quit := make(chan os.Signal, 1)
-	// signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	// go func() {
-	// 	<-quit
-	// 	log.Println("Shutting down server...")
-	// 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	// 	defer cancel()
-	// 	if err := srv.Shutdown(ctx); err != nil {
-	// 		log.Fatalf("Server forced to shutdown: %v", err)
-	// 	}
-	// }()
-
-	// log.Printf("Starting server on :%s...", port)
-	// if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-	// 	log.Fatalf("Server failed: %v", err)
-	// }
 }

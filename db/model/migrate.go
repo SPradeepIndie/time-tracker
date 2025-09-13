@@ -2,6 +2,7 @@ package model
 
 import (
 	"database/sql"
+	"timetracker/api"
 )
 
 func Migrate(db *sql.DB) error {
@@ -16,7 +17,7 @@ func Migrate(db *sql.DB) error {
 	return err
 }
 
-func InsertInto(db *sql.DB, t Tracker) error {
+func InsertInto(db *sql.DB, t api.Tracker) error {
 	query := `
         INSERT INTO tracker (task, start_time, end_time)
         VALUES ($1, $2, $3)
