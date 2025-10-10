@@ -1,0 +1,339 @@
+openapi: 3.0.3
+info:
+  title: Time Tracker API
+  description: REST API for the Time Tracker application
+  version: 1.0.0
+  contact:
+    name: Time Tracker Team
+    email: support@timetracker.com
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Development server
+
+security:
+  - OAuth2: []
+
+paths:
+  /user/trackers:
+    get:
+      summary: Get user's time entries
+      tags:
+        - User
+      responses:
+        '200':
+          description: List of time tracking entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TimeEntry'
+    post:
+      summary: Create time entry
+      tags:
+        - User
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTimeEntry'
+      responses:
+        '201':
+          description: Time entry created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeEntry'
+
+  /user/trackers/{id}:
+    put:
+      summary: Update time entry
+      tags:
+        - User
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTimeEntry'
+      responses:
+        '200':
+          description: Time entry updated
+    delete:
+      summary: Delete time entry
+      tags:
+        - User
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Time entry deleted
+
+  /user/profile:
+    get:
+      summary: Get user profile
+      tags:
+        - User
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+
+  /admin/users:
+    get:
+      summary: Get all users
+      tags:
+        - Admin
+      security:
+        - OAuth2: [admin]
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+    post:
+      summary: Create user
+      tags:
+        - Admin
+      security:
+        - OAuth2: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUser'
+      responses:
+        '201':
+          description: User created
+
+  /admin/reports/time:
+    get:
+      summary: Generate time reports
+      tags:
+        - Admin
+      security:
+        - OAuth2: [admin]
+      parameters:
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: userId
+          in: query
+          schema:
+            type: integer
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [json, csv, pdf]
+            default: json
+      responses:
+        '200':
+          description: Time report generated
+
+  /ai/recommendations/{userId}:
+    get:
+      summary: Get AI recommendations
+      tags:
+        - AI
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: AI recommendations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AIRecommendations'
+
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: http://localhost:8080/oauth/authorize
+          tokenUrl: http://localhost:8080/oauth/token
+          scopes:
+            user: User access
+            admin: Admin access
+
+  schemas:
+    TimeEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        task:
+          type: string
+          example: "Development work"
+        startTime:
+          type: string
+          format: date-time
+          example: "2025-10-09T09:00:00Z"
+        endTime:
+          type: string
+          format: date-time
+          example: "2025-10-09T17:00:00Z"
+        userId:
+          type: integer
+          example: 123
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateTimeEntry:
+      type: object
+      required:
+        - task
+        - startTime
+      properties:
+        task:
+          type: string
+          example: "Development work"
+        startTime:
+          type: string
+          format: date-time
+          example: "2025-10-09T09:00:00Z"
+        endTime:
+          type: string
+          format: date-time
+          example: "2025-10-09T17:00:00Z"
+
+    UpdateTimeEntry:
+      type: object
+      properties:
+        task:
+          type: string
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        department:
+          type: string
+        role:
+          type: string
+          enum: [employee, manager, admin]
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        department:
+          type: string
+        role:
+          type: string
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateUser:
+      type: object
+      required:
+        - name
+        - email
+        - role
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        department:
+          type: string
+        role:
+          type: string
+          enum: [employee, manager, admin]
+
+    AIRecommendations:
+      type: object
+      properties:
+        userId:
+          type: integer
+        recommendations:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [productivity, schedule, break]
+              message:
+                type: string
+              priority:
+                type: string
+                enum: [low, medium, high]
+        weeklyPlan:
+          type: object
+          properties:
+            totalHours:
+              type: number
+            dailyBreakdown:
+              type: array
+              items:
+                type: object
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        timestamp:
+          type: string
+          format: date-time

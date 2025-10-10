@@ -67,7 +67,8 @@ func (i *postgres) Ping(logger *logger.Logger) error {
 	return i.db.Ping()
 }
 
-func (i *postgres) Close() error {
+func (i *postgres) Close(logger *logger.Logger) error {
+	logger.Infof("Closing the database connection...\n")
 	if i.db != nil {
 		return i.db.Close()
 	}
