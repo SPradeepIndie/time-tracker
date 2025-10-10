@@ -1,4 +1,4 @@
-package api
+package model
 
 type Tracker struct {
 	ID        int    `json:"id"`
