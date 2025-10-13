@@ -8,18 +8,16 @@ info:
     email: support@timetracker.com
 
 servers:
-  - url: http://localhost:8080/api/v1
+  - url: http://localhost:8080
     description: Development server
 
-security:
-  - OAuth2: []
-
 paths:
-  /user/trackers:
+  /trackers:
     get:
-      summary: Get user's time entries
+      summary: Get all time tracking entries
+      description: Retrieves all time tracking entries from the database
       tags:
-        - User
+        - Trackers
       responses:
         '200':
           description: List of time tracking entries
@@ -28,312 +26,228 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/TimeEntry'
-    post:
-      summary: Create time entry
-      tags:
-        - User
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateTimeEntry'
-      responses:
-        '201':
-          description: Time entry created
+                  $ref: '#/components/schemas/Tracker'
+        '500':
+          description: Internal server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TimeEntry'
-
-  /user/trackers/{id}:
-    put:
-      summary: Update time entry
+                $ref: '#/components/schemas/Error'
+    post:
+      summary: Create a new time tracking entry
+      description: Creates a new time tracking entry in the database (Currently not implemented)
       tags:
-        - User
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
+        - Trackers
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateTimeEntry'
+              $ref: '#/components/schemas/CreateTracker'
       responses:
-        '200':
-          description: Time entry updated
-    delete:
-      summary: Delete time entry
+        '201':
+          description: Time tracking entry created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tracker'
+        '501':
+          description: Not implemented yet
+          content:
+            application/json:
+              schema:
+                type: string
+                example: "Not Implemented Yet"
+
+  /trackers/{id}:
+    get:
+      summary: Get time tracking entry by ID
+      description: Retrieves a specific time tracking entry by its ID (Currently not implemented)
       tags:
-        - User
+        - Trackers
       parameters:
         - name: id
           in: path
           required: true
+          description: The ID of the time tracking entry
           schema:
             type: integer
+            example: 1
+      responses:
+        '200':
+          description: Time tracking entry found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tracker'
+        '404':
+          description: Time tracking entry not found
+        '501':
+          description: Not implemented yet
+          content:
+            application/json:
+              schema:
+                type: string
+                example: "Not Implemented Yet: 1"
+    put:
+      summary: Update time tracking entry
+      description: Updates an existing time tracking entry by ID (Currently not implemented)
+      tags:
+        - Trackers
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The ID of the time tracking entry to update
+          schema:
+            type: integer
+            example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTracker'
+      responses:
+        '200':
+          description: Time tracking entry updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tracker'
+        '404':
+          description: Time tracking entry not found
+        '501':
+          description: Not implemented yet
+          content:
+            application/json:
+              schema:
+                type: string
+                example: "Not Implemented Yet: 1"
+    delete:
+      summary: Delete time tracking entry
+      description: Removes a time tracking entry from the database by ID (Currently not implemented)
+      tags:
+        - Trackers
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The ID of the time tracking entry to delete
+          schema:
+            type: integer
+            example: 1
       responses:
         '204':
-          description: Time entry deleted
-
-  /user/profile:
-    get:
-      summary: Get user profile
-      tags:
-        - User
-      responses:
-        '200':
-          description: User profile
+          description: Time tracking entry deleted successfully
+        '404':
+          description: Time tracking entry not found
+        '501':
+          description: Not implemented yet
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserProfile'
+                type: string
+                example: "Not Implemented Yet: 1"
 
-  /admin/users:
+  /health:
     get:
-      summary: Get all users
+      summary: Health check endpoint
+      description: Returns the health status of the API server
       tags:
-        - Admin
-      security:
-        - OAuth2: [admin]
+        - Health
       responses:
         '200':
-          description: List of users
+          description: Server is healthy
           content:
-            application/json:
+            text/plain:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/User'
-    post:
-      summary: Create user
-      tags:
-        - Admin
-      security:
-        - OAuth2: [admin]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateUser'
-      responses:
-        '201':
-          description: User created
-
-  /admin/reports/time:
-    get:
-      summary: Generate time reports
-      tags:
-        - Admin
-      security:
-        - OAuth2: [admin]
-      parameters:
-        - name: startDate
-          in: query
-          schema:
-            type: string
-            format: date
-        - name: endDate
-          in: query
-          schema:
-            type: string
-            format: date
-        - name: userId
-          in: query
-          schema:
-            type: integer
-        - name: format
-          in: query
-          schema:
-            type: string
-            enum: [json, csv, pdf]
-            default: json
-      responses:
-        '200':
-          description: Time report generated
-
-  /ai/recommendations/{userId}:
-    get:
-      summary: Get AI recommendations
-      tags:
-        - AI
-      parameters:
-        - name: userId
-          in: path
-          required: true
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: AI recommendations
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AIRecommendations'
+                type: string
+                example: "OK"
 
 components:
-  securitySchemes:
-    OAuth2:
-      type: oauth2
-      flows:
-        authorizationCode:
-          authorizationUrl: http://localhost:8080/oauth/authorize
-          tokenUrl: http://localhost:8080/oauth/token
-          scopes:
-            user: User access
-            admin: Admin access
-
   schemas:
-    TimeEntry:
+    Tracker:
       type: object
+      description: Time tracking entry representing a work session
       properties:
         id:
           type: integer
+          description: Unique identifier for the time tracking entry
           example: 1
         task:
           type: string
-          example: "Development work"
-        startTime:
+          description: Description of the task being tracked
+          example: "Development work on user authentication"
+        start_time:
           type: string
-          format: date-time
-          example: "2025-10-09T09:00:00Z"
-        endTime:
+          description: Start time of the work session (stored as string in current implementation)
+          example: "2025-10-11T09:00:00Z"
+        end_time:
           type: string
-          format: date-time
-          example: "2025-10-09T17:00:00Z"
-        userId:
-          type: integer
-          example: 123
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
+          description: End time of the work session (stored as string in current implementation)
+          example: "2025-10-11T17:00:00Z"
+      required:
+        - id
+        - task
+        - start_time
+        - end_time
 
-    CreateTimeEntry:
+    CreateTracker:
       type: object
+      description: Data required to create a new time tracking entry
+      properties:
+        task:
+          type: string
+          description: Description of the task to be tracked
+          example: "Development work on user authentication"
+          minLength: 1
+          maxLength: 500
+        start_time:
+          type: string
+          description: Start time of the work session
+          example: "2025-10-11T09:00:00Z"
+        end_time:
+          type: string
+          description: End time of the work session (optional for ongoing tasks)
+          example: "2025-10-11T17:00:00Z"
       required:
         - task
-        - startTime
+        - start_time
+
+    UpdateTracker:
+      type: object
+      description: Data that can be updated for an existing time tracking entry
       properties:
         task:
           type: string
-          example: "Development work"
-        startTime:
+          description: Updated description of the task
+          example: "Development work on user authentication - completed"
+          minLength: 1
+          maxLength: 500
+        start_time:
           type: string
-          format: date-time
-          example: "2025-10-09T09:00:00Z"
-        endTime:
+          description: Updated start time of the work session
+          example: "2025-10-11T09:00:00Z"
+        end_time:
           type: string
-          format: date-time
-          example: "2025-10-09T17:00:00Z"
-
-    UpdateTimeEntry:
-      type: object
-      properties:
-        task:
-          type: string
-        startTime:
-          type: string
-          format: date-time
-        endTime:
-          type: string
-          format: date-time
-
-    UserProfile:
-      type: object
-      properties:
-        id:
-          type: integer
-        name:
-          type: string
-        email:
-          type: string
-        department:
-          type: string
-        role:
-          type: string
-          enum: [employee, manager, admin]
-
-    User:
-      type: object
-      properties:
-        id:
-          type: integer
-        name:
-          type: string
-        email:
-          type: string
-        department:
-          type: string
-        role:
-          type: string
-        isActive:
-          type: boolean
-        createdAt:
-          type: string
-          format: date-time
-
-    CreateUser:
-      type: object
-      required:
-        - name
-        - email
-        - role
-      properties:
-        name:
-          type: string
-        email:
-          type: string
-          format: email
-        department:
-          type: string
-        role:
-          type: string
-          enum: [employee, manager, admin]
-
-    AIRecommendations:
-      type: object
-      properties:
-        userId:
-          type: integer
-        recommendations:
-          type: array
-          items:
-            type: object
-            properties:
-              type:
-                type: string
-                enum: [productivity, schedule, break]
-              message:
-                type: string
-              priority:
-                type: string
-                enum: [low, medium, high]
-        weeklyPlan:
-          type: object
-          properties:
-            totalHours:
-              type: number
-            dailyBreakdown:
-              type: array
-              items:
-                type: object
+          description: Updated end time of the work session
+          example: "2025-10-11T17:00:00Z"
 
     Error:
       type: object
+      description: Standard error response format
       properties:
         error:
           type: string
+          description: Human-readable error message
+          example: "Failed to fetch trackers"
         code:
           type: string
+          description: Error code for programmatic handling
+          example: "DATABASE_ERROR"
         timestamp:
           type: string
           format: date-time
+          description: When the error occurred
+          example: "2025-10-11T10:30:00Z"
