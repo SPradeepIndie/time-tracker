@@ -25,9 +25,10 @@ func main() {
 
 	logger.Infof("Starting database migration...")
 
-	if err := migrate.Migrate(pgDB.GetDB()); err != nil {
+	if err, migrationQuery := migrate.Migrate(pgDB.GetDB()); err != nil {
 		logger.Errorf("Failed to migrate database: %v", err)
+		logger.Infof("Migration Query: %s", migrationQuery)
+		return
 	}
-
 	logger.Infof("Database migration completed successfully.")
 }

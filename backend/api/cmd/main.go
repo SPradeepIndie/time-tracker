@@ -21,7 +21,7 @@ func main() {
 
 	service := api.Service(repo)
 
-	handler := api.Handler(service)
+	handler := api.Handler(service, logger)
 
 	defer pgDB.CloseDB()
 

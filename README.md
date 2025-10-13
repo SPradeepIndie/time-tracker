@@ -22,8 +22,10 @@ timeTracker/
 │   ├── src/              # React source code
 │   ├── package.json      # Node.js dependencies
 │   └── tsconfig.json     # TypeScript configuration
-├── mobile-app/           # React Native mobile app
-│   ├── src/              # React Native source code
+├── mobile-app/           # React Native mobile app (Expo)
+│   ├── assets/           # App icons and images
+│   ├── App.tsx           # Main app component
+│   ├── app.json          # Expo configuration
 │   ├── package.json      # Node.js dependencies
 │   └── tsconfig.json     # TypeScript configuration
 └── README.md             # This file
@@ -45,7 +47,7 @@ timeTracker/
 ### Mobile App
 - **Purpose**: Daily time tracking for employees
 - **Features**: Start/stop timer, view entries, quick logging
-- **Platform**: iOS and Android
+- **Platform**: iOS and Android (Expo managed workflow)
 
 ## Getting Started
 
@@ -90,7 +92,7 @@ timeTracker/
    npm run dev
    ```
 
-### Mobile App (React Native)
+### Mobile App (React Native + Expo)
 
 1. Navigate to the mobile app directory:
    ```bash
@@ -102,10 +104,19 @@ timeTracker/
    npm install
    ```
 
-3. Start the development server:
+3. Start the Expo development server:
    ```bash
    npm start
    ```
+
+4. Run on device/simulator:
+   ```bash
+   npm run android  # For Android
+   npm run ios      # For iOS (can be run on any platform via Expo Go)
+   npm run web      # For web browser testing
+   ```
+
+   **Note**: You can also scan the QR code with the Expo Go app on your phone for instant testing.
 
 ## Technologies Used
 
@@ -121,8 +132,8 @@ timeTracker/
 
 ### Mobile App
 - React Native
+- Expo (managed workflow)
 - TypeScript
-- Expo (Development Platform)
 
 ## Development
 
