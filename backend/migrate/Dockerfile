@@ -5,15 +5,15 @@ COPY ../go.mod .
 COPY ../go.sum .
 RUN go mod download
     
-COPY . ./migrate
+COPY ../migrate ./migrate
 COPY ../db ./db
 COPY ../internal ./internal
 COPY ../logger ./logger
 COPY ../errorutil ./errorutil
 
-RUN go build -o /migrate/cmd/migrate ./migrate/cmd
+RUN go build -o /app/migrate/cmd/migrate ./migrate/cmd
 
 FROM alpine:latest
 WORKDIR /root/
-COPY --from=builder /migrate/cmd/migrate .
-ENTRYPOINT ["./migrate"]
+COPY --from=builder /app/migrate/cmd/migrate .
+ENTRYPOINT ["./app/migrate/cmd/migrate"]
