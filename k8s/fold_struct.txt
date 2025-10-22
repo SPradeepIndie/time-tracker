@@ -1,0 +1,203 @@
+Plan summary (short)
+
+Containerize each runnable component as its own image: backend/api, backend/migrate, web/dashboard. Do NOT containerize mobile app (build artifacts only).
+Keep one Dockerfile per component (you already have api + migrate). Put web Dockerfile in web/.
+Add k8s manifests in a repo-level k8s/ directory using base + overlays (kustomize) or Helm charts for prod.
+CI builds images, pushes to registry, and optionally deploys via kubectl/helm.
+Recommended repo layout
+time-tracker/
+├─ backend/
+│  ├─ api/
+│  │  └─ Dockerfile
+│  ├─ migrate/
+│  │  └─ Dockerfile
+│  └─ ...backend code...
+├─ web/
+│  ├─ Dockerfile
+│  └─ ...frontend code...
+├─ mobile/            # not containerized; build in CI to artifacts if needed
+├─ k8s/
+│  ├─ base/
+│  │  ├─ namespace.yaml
+│  │  ├─ postgres-statefulset.yaml  # or use Helm chart (recommended)
+│  │  ├─ api-deployment.yaml
+│  │  ├─ api-service.yaml
+│  │  ├─ web-deployment.yaml
+│  │  ├─ web-service.yaml
+│  │  ├─ migrate-job.yaml
+│  │  └─ kustomization.yaml
+│  └─ overlays/
+│     ├─ staging/kustomization.yaml
+│     └─ production/kustomization.yaml
+├─ .github/workflows/
+│  └─ ci-deploy.yml
+└─ README.md
+
+Example k8s manifests (place under k8s/base)
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: timetracker-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: timetracker-api
+  template:
+    metadata:
+      labels:
+        app: timetracker-api
+    spec:
+      containers:
+        - name: api
+          image: REGISTRY/timetracker-api:TAG
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DATABASE_HOST
+              value: postgres
+            - name: DATABASE_PORT
+              value: "5432"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+API Deployment + Service
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: timetracker-api
+spec:
+  selector:
+    app: timetracker-api
+  ports:
+    - port: 8080
+      targetPort: 8080
+  type: ClusterIP
+
+Web Deployment + Service
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: timetracker-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: timetracker-web
+  template:
+    metadata:
+      labels:
+        app: timetracker-web
+    spec:
+      containers:
+        - name: web
+          image: REGISTRY/timetracker-web:TAG
+          ports:
+            - containerPort: 3000
+          env:
+            - name: REACT_APP_API_URL
+              value: "http://timetracker-api:8080"
+
+Migrate as a Job (one‑off job image)
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: timetracker-migrate
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          image: REGISTRY/timetracker-migrate:TAG
+          env:
+            - name: DATABASE_HOST
+              value: postgres
+            - name: DATABASE_PORT
+              value: "5432"
+          # pass args or use entrypoint in image
+          command: ["/usr/local/bin/timetracker-migrate"]
+
+kustomization.yaml (base)
+
+resources:
+  - namespace.yaml
+  - api-deployment.yaml
+  - api-service.yaml
+  - web-deployment.yaml
+  - web-service.yaml
+  - migrate-job.yaml
+  # include postgres manifests or rely on Helm chart in overlay
+
+Overlays
+
+staging kustomization patches image names/tags, replica counts, secrets for staging.
+production kustomization patches for prod values, HPA, ingress, imagePullSecrets.
+Registry and tagging
+
+Build images as REGISTRY/namespace/name:commit-sha (immutable tag).
+Update kustomize images in overlays or use Helm values.
+
+CI: build & push (GitHub Actions minimal)
+
+name: CI Build & Push
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Login to registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ secrets.REGISTRY_URL }}
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
+      - name: Build & push API
+        uses: docker/build-push-action@v4
+        with:
+          context: ./backend
+          file: ./backend/api/Dockerfile
+          push: true
+          tags: ${{ secrets.REGISTRY_URL }}/time-tracker-api:${{ github.sha }}
+      - name: Build & push Migrate
+        uses: docker/build-push-action@v4
+        with:
+          context: ./backend
+          file: ./backend/migrate/Dockerfile
+          push: true
+          tags: ${{ secrets.REGISTRY_URL }}/time-tracker-migrate:${{ github.sha }}
+      - name: Build & push Web
+        uses: docker/build-push-action@v4
+        with:
+          context: ./web
+          file: ./web/Dockerfile
+          push: true
+          tags: ${{ secrets.REGISTRY_URL }}/time-tracker-web:${{ github.sha }}
+      # optional: deploy step (kubectl/helm) using kubeconfig stored in secrets
+
+Notes / recommendations (short)
+
+Use a managed Postgres (RDS/CloudSQL) in prod or a well-backed StatefulSet + PVC with a stable storage class. For k8s local/dev, keep a Postgres manifest in k8s/base or use Bitnami Helm chart.
+Keep config in ConfigMaps, credentials in Secrets. Do not bake secrets into images.
+Use a Job for DB migrations (migrate image) and run it after DB is ready (CI or Helm hooks).
+Use Kustomize for simple overlays; switch to Helm if templates/values are more convenient for releases.
+Mobile app: build artifacts in CI and upload to app stores/CI distribution; do not run as a container.
+If you want, I can:
+
+Add the k8s base + staging overlays and the GitHub Actions file into the repo now.
+Generate specific k8s manifests tuned to your backend config.json (I can read files if you want).
