@@ -9,6 +9,10 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"os"
+	"reflect"
+	"strconv"
+	"strings"
 )
 
 //go:embed config.json
@@ -40,6 +44,44 @@ func LoadConfig() (*Config, error) {
 	if err := json.Unmarshal(data, &c); err != nil {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
+
+	v := reflect.ValueOf(c).Elem()
+	t := reflect.TypeOf(c)
+
+	for i := 0; i < v.NumField(); i++ {
+		field := v.Field(i)
+
+		fieldName := t.Field(i).Name
+
+		//(e.g., DBType -> DB_TYPE)
+		envVarName := strings.ToUpper(strings.Join(splitCamelCase(fieldName), "_"))
+
+		if envVal := os.Getenv(envVarName); envVal != "" {
+			switch field.Kind() {
+			case reflect.String:
+				field.SetString(envVal)
+			case reflect.Int:
+				if intVal, err := strconv.Atoi(envVal); err == nil {
+					field.SetInt(int64(intVal))
+				}
+			}
+		}
+	}
 	cfg = &c
 	return cfg, nil
+}
+
+func splitCamelCase(s string) []string {
+	var words []string
+	var currentWord strings.Builder
+
+	for i, r := range s {
+		if i > 0 && r >= 'A' && r <= 'Z' {
+			words = append(words, currentWord.String())
+			currentWord.Reset()
+		}
+		currentWord.WriteRune(r)
+	}
+	words = append(words, currentWord.String())
+	return words
 }
