@@ -5,15 +5,16 @@ COPY ../go.mod .
 COPY ../go.sum .
 RUN go mod download
     
-COPY . ./api
+COPY ../api ./api
 COPY ../db ./db
 COPY ../internal ./internal
 COPY ../logger ./logger
 COPY ../errorutil ./errorutil
 
-RUN go build -o /api/cmd/api ./api/cmd
+RUN go build -o ./api/cmd/api ./api/cmd
 
 FROM alpine:latest
 WORKDIR /root/
-COPY --from=builder /api/cmd/api .
+COPY --from=builder /app/api/cmd/api .
 EXPOSE 8080
+ENTRYPOINT ["./app/api/cmd/api"]
