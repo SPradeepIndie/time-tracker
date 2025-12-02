@@ -3,5 +3,6 @@
   "port": 5432,
   "user": "postgres",
   "dbname": "tasks",
-  "app_port": "8080"
+  "app_port": "8080",
+  "password": "postgres"
 }
