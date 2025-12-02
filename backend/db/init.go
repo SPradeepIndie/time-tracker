@@ -33,7 +33,7 @@ func Init(logger *logger.Logger) *initDB {
 		Port:     cfg.Port,
 		User:     cfg.User,
 		Password: cfg.Password,
-		Dbname:   cfg.Dbname,
+		Dbname:   cfg.SchemaName,
 	})
 
 	if err := pg.Connect(logger); err != nil {

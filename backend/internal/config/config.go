@@ -20,13 +20,13 @@ var configFS embed.FS
 
 // Config holds application configuration values.
 type Config struct {
-	DBType   string `json:"dbtype"`
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	User     string `json:"user"`
-	Password string `json:"password"`
-	Dbname   string `json:"dbname"`
-	AppPort  string `json:"app_port"`
+	Type       string `json:"dbtype"`
+	Host       string `json:"host"`
+	Port       int    `json:"port"`
+	User       string `json:"user"`
+	Password   string `json:"password"`
+	SchemaName string `json:"schema_name"`
+	AppPort    string `json:"app_port"`
 }
 
 var cfg *Config
@@ -45,6 +45,7 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
 
+	// Reflect automatically converts env vars to relevant type of the struct fields
 	v := reflect.ValueOf(&c).Elem()
 	t := v.Type()
 
@@ -53,8 +54,8 @@ func LoadConfig() (*Config, error) {
 
 		fieldName := t.Field(i).Name
 
-		//(e.g., DBType -> DB_TYPE)
-		envVarName := strings.ToUpper(strings.Join(splitCamelCase(fieldName), "_"))
+		//(e.g., Type -> DB_TYPE, User -> DB_USER, with DB_ prefix to avoid system var collisions)
+		envVarName := "DB_" + strings.ToUpper(strings.Join(splitCamelCase(fieldName), "_"))
 
 		if envVal := os.Getenv(envVarName); envVal != "" {
 			switch field.Kind() {
