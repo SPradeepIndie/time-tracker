@@ -45,8 +45,8 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
 
-	v := reflect.ValueOf(c).Elem()
-	t := reflect.TypeOf(c)
+	v := reflect.ValueOf(&c).Elem()
+	t := v.Type()
 
 	for i := 0; i < v.NumField(); i++ {
 		field := v.Field(i)
