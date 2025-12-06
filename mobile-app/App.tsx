@@ -3,7 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { TrackProvider } from './context/TrackContext';
-import { ThemeProvider } from './theme/ThemeContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { RootStackParamList } from './types/Track';
 
 // Import screens
