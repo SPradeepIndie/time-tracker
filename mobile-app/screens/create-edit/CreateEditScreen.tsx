@@ -8,16 +8,9 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RouteProp } from '@react-navigation/native';
-import { RootStackParamList } from '../types/Track';
-import { useTrackContext } from '../context/TrackContext';
-
-type CreateEditScreenNavigationProp = NativeStackNavigationProp<
-  RootStackParamList,
-  'CreateEdit'
->;
-type CreateEditScreenRouteProp = RouteProp<RootStackParamList, 'CreateEdit'>;
+import { CreateEditScreenNavigationProp, CreateEditScreenRouteProp } from '../../navigation/types';
+import { useTrackContext } from '../../context/TrackContext';
+import { useTheme } from '../../context/ThemeContext';
 
 interface Props {
   navigation: CreateEditScreenNavigationProp;
@@ -25,7 +18,7 @@ interface Props {
 }
 
 export default function CreateEditScreen({ navigation, route }: Props) {
-  const { trackId } = route.params;
+  const { id } = route.params;
   const { addTrack, updateTrack, getTrackById } = useTrackContext();
 
   const [title, setTitle] = useState('');
@@ -34,11 +27,11 @@ export default function CreateEditScreen({ navigation, route }: Props) {
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [tags, setTags] = useState('');
 
-  const isEdit = !!trackId;
+  const isEdit = !!id;
 
   useEffect(() => {
-    if (trackId) {
-      const track = getTrackById(trackId);
+    if (id) {
+      const track = getTrackById(id);
       if (track) {
         setTitle(track.title);
         setDescription(track.description);
@@ -47,7 +40,7 @@ export default function CreateEditScreen({ navigation, route }: Props) {
         setTags(track.tags?.join(', ') || '');
       }
     }
-  }, [trackId]);
+  }, [id]);
 
   const handleSave = async () => {
     if (!title.trim()) {
@@ -66,8 +59,8 @@ export default function CreateEditScreen({ navigation, route }: Props) {
       .filter((tag) => tag.length > 0);
 
     try {
-      if (isEdit && trackId) {
-        await updateTrack(trackId, {
+      if (isEdit && id) {
+        await updateTrack(id, {
           title: title.trim(),
           description: description.trim(),
           status,

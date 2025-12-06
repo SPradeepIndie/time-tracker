@@ -7,16 +7,9 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RouteProp } from '@react-navigation/native';
-import { RootStackParamList } from '../types/Track';
-import { useTrackContext } from '../context/TrackContext';
-
-type TrackDetailsScreenNavigationProp = NativeStackNavigationProp<
-  RootStackParamList,
-  'TrackDetails'
->;
-type TrackDetailsScreenRouteProp = RouteProp<RootStackParamList, 'TrackDetails'>;
+import { TrackDetailsScreenNavigationProp, TrackDetailsScreenRouteProp } from '../../navigation/types';
+import { useTrackContext } from '../../context/TrackContext';
+import { useTheme } from '../../context/ThemeContext';
 
 interface Props {
   navigation: TrackDetailsScreenNavigationProp;
@@ -24,10 +17,10 @@ interface Props {
 }
 
 export default function TrackDetailsScreen({ navigation, route }: Props) {
-  const { trackId } = route.params;
+  const { id } = route.params;
   const { getTrackById, deleteTrack } = useTrackContext();
 
-  const track = getTrackById(trackId);
+  const track = getTrackById(id);
 
   if (!track) {
     return (
@@ -47,7 +40,7 @@ export default function TrackDetailsScreen({ navigation, route }: Props) {
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
-            deleteTrack(trackId);
+            deleteTrack(id);
             navigation.goBack();
           },
         },
@@ -150,7 +143,7 @@ export default function TrackDetailsScreen({ navigation, route }: Props) {
       <View style={styles.actions}>
         <TouchableOpacity
           style={[styles.button, styles.editButton]}
-          onPress={() => navigation.navigate('CreateEdit', { trackId })}
+          onPress={() => navigation.navigate('CreateEdit', { id })}
         >
           <Text style={styles.editButtonText}>✏️ Edit Track</Text>
         </TouchableOpacity>
