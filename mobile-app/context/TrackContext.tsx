@@ -49,7 +49,6 @@ export const TrackProvider: React.FC<TrackProviderProps> = ({ children }) => {
     } catch (err) {
       setError('Failed to load tracks from server');
       console.error('Error loading tracks:', err);
-      // Keep existing tracks if refresh fails
     } finally {
       setLoading(false);
     }

@@ -164,15 +164,7 @@ export default function HomeScreen({ navigation }: Props) {
   return (
     <SafeAreaView edges={['top']}>
       <View style={styles.container}>
-        <Header
-          title="Task Tracker"
-          rightActions={[
-            {
-              icon: 'ℹ️',
-              onPress: () => navigation.navigate('Info'),
-            },
-          ]}
-        />
+        <Header title="Task Tracker" />
 
         <View style={styles.searchContainer}>
           <Input

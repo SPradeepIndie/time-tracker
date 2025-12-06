@@ -31,7 +31,7 @@ export const Header: React.FC<HeaderProps> = ({
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      paddingTop: 40,
+      paddingTop: 10,
       paddingBottom: 20,
       paddingHorizontal: 20,
       backgroundColor: colors.surface,
