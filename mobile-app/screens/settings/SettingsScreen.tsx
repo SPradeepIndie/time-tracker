@@ -95,7 +95,7 @@ export default function SettingsScreen({ navigation }: Props) {
         <ScrollView style={styles.content}>
           <Text style={styles.sectionTitle}>Appearance</Text>
           <Card>
-            <View style={styles.settingItem}>
+            <View style={[styles.settingItem, styles.settingItemLast]}>
               <View style={styles.settingLeft}>
                 <Text style={styles.settingLabel}>🌓 Dark Mode</Text>
                 <Text style={styles.settingDescription}>
@@ -108,26 +108,6 @@ export default function SettingsScreen({ navigation }: Props) {
                 trackColor={{ false: colors.border, true: colors.primary }}
                 thumbColor={colors.surface}
               />
-            </View>
-
-            <View style={[styles.settingItem, styles.settingItemLast]}>
-              <View style={styles.settingLeft}>
-                <Text style={styles.settingLabel}>🎨 Current Theme</Text>
-                <Text style={styles.settingDescription}>
-                  {isDark ? 'Dark mode active' : 'Light mode active'}
-                </Text>
-              </View>
-              <View style={styles.themePreview}>
-                <View
-                  style={[styles.themeCircle, { backgroundColor: colors.primary }]}
-                />
-                <View
-                  style={[styles.themeCircle, { backgroundColor: colors.background }]}
-                />
-                <View
-                  style={[styles.themeCircle, { backgroundColor: colors.text }]}
-                />
-              </View>
             </View>
           </Card>
 
