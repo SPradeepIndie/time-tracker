@@ -4,6 +4,8 @@ import { useTheme } from '../../context/ThemeContext';
 
 interface HeaderProps {
   title: string;
+  /** Optional arbitrary JSX rendered on the right (e.g. a badge or status chip) */
+  right?: React.ReactNode;
   leftAction?: {
     icon: string;
     onPress: () => void;
@@ -20,6 +22,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   title,
+  right,
   leftAction,
   rightAction,
   rightActions,
@@ -68,8 +71,9 @@ export const Header: React.FC<HeaderProps> = ({
         </TouchableOpacity>
       )}
       <Text style={styles.title}>{title}</Text>
-      {(rightAction || rightActions) && (
+      {(right || rightAction || rightActions) && (
         <View style={styles.rightActions}>
+          {right}
           {rightAction && (
             <TouchableOpacity style={styles.actionButton} onPress={rightAction.onPress}>
               <Text style={styles.actionIcon}>{rightAction.icon}</Text>
