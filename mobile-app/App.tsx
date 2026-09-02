@@ -1,13 +1,13 @@
 import React from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
-import { TrackProvider } from './context/TrackContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
+import { SyncProvider } from './context/SyncContext';
+import { TrackProvider } from './context/TrackContext';
 import { RootNavigator } from './navigation';
 
 function AppContent() {
   const { isDark } = useTheme();
-  
   return (
     <NavigationContainer>
       <RootNavigator />
@@ -19,9 +19,12 @@ function AppContent() {
 export default function App() {
   return (
     <ThemeProvider>
-      <TrackProvider>
-        <AppContent />
-      </TrackProvider>
+      {/* SyncProvider wraps TrackProvider so TrackContext can read syncEnabled */}
+      <SyncProvider>
+        <TrackProvider>
+          <AppContent />
+        </TrackProvider>
+      </SyncProvider>
     </ThemeProvider>
   );
 }

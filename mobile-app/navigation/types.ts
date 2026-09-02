@@ -3,9 +3,11 @@ import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { CompositeNavigationProp, RouteProp } from '@react-navigation/native';
 
 export type RootStackParamList = {
+  Auth: undefined;
+  PinSetup: undefined;
   MainTabs: undefined;
-  TrackDetails: { id: number };
-  CreateEdit: { id?: number };
+  TrackDetails: { id: string };
+  CreateEdit: { id?: string };
   Info: undefined;
 };
 

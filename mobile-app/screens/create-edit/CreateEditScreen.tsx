@@ -1,3 +1,9 @@
+/**
+ * CreateEditScreen.tsx
+ *
+ * Create or edit a track.
+ * Tags: predefined chips + ability to type a custom tag.
+ */
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -11,6 +17,8 @@ import {
 import { CreateEditScreenNavigationProp, CreateEditScreenRouteProp } from '../../navigation/types';
 import { useTrackContext } from '../../context/TrackContext';
 import { useTheme } from '../../context/ThemeContext';
+import { PREDEFINED_TAGS } from '../../types/Track';
+import { SafeAreaView } from '../../components/layout/SafeAreaView';
 
 interface Props {
   navigation: CreateEditScreenNavigationProp;
@@ -18,14 +26,16 @@ interface Props {
 }
 
 export default function CreateEditScreen({ navigation, route }: Props) {
-  const { id } = route.params;
+  const { id } = route.params ?? {};
   const { addTrack, updateTrack, getTrackById } = useTrackContext();
+  const { colors } = useTheme();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<'pending' | 'in-progress' | 'completed'>('pending');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
-  const [tags, setTags] = useState('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [customTag, setCustomTag] = useState('');
 
   const isEdit = !!id;
 
@@ -37,26 +47,36 @@ export default function CreateEditScreen({ navigation, route }: Props) {
         setDescription(track.description);
         setStatus(track.status);
         setPriority(track.priority);
-        setTags(track.tags?.join(', ') || '');
+        setSelectedTags(track.tags ?? []);
       }
     }
   }, [id]);
 
+  const toggleTag = (tag: string) => {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
+  };
+
+  const addCustomTag = () => {
+    const tag = customTag.trim().toLowerCase().replace(/\s+/g, '-');
+    if (!tag || selectedTags.includes(tag)) {
+      setCustomTag('');
+      return;
+    }
+    setSelectedTags((prev) => [...prev, tag]);
+    setCustomTag('');
+  };
+
+  const removeTag = (tag: string) => {
+    setSelectedTags((prev) => prev.filter((t) => t !== tag));
+  };
+
   const handleSave = async () => {
     if (!title.trim()) {
-      Alert.alert('Error', 'Please enter a title');
+      Alert.alert('Missing title', 'Please enter a title for this track.');
       return;
     }
-
-    if (!description.trim()) {
-      Alert.alert('Error', 'Please enter a description');
-      return;
-    }
-
-    const tagsArray = tags
-      .split(',')
-      .map((tag) => tag.trim())
-      .filter((tag) => tag.length > 0);
 
     try {
       if (isEdit && id) {
@@ -65,9 +85,10 @@ export default function CreateEditScreen({ navigation, route }: Props) {
           description: description.trim(),
           status,
           priority,
-          tags: tagsArray,
+          tags: selectedTags,
+          endTime: status === 'completed' ? new Date() : undefined,
         });
-        Alert.alert('Success', 'Track updated successfully', [
+        Alert.alert('Updated', 'Track updated successfully.', [
           { text: 'OK', onPress: () => navigation.goBack() },
         ]);
       } else {
@@ -76,211 +97,269 @@ export default function CreateEditScreen({ navigation, route }: Props) {
           description: description.trim(),
           status,
           priority,
-          tags: tagsArray,
+          tags: selectedTags,
           startTime: new Date(),
           endTime: status === 'completed' ? new Date() : undefined,
         });
-        Alert.alert('Success', 'Track created successfully', [
+        Alert.alert('Created', 'Track created successfully.', [
           { text: 'OK', onPress: () => navigation.goBack() },
         ]);
       }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to save track. Please try again.');
+    } catch {
+      Alert.alert('Error', 'Failed to save. Please try again.');
     }
   };
 
-  return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>
-          {isEdit ? 'Edit Track' : 'Create New Track'}
-        </Text>
-      </View>
+  const s = makeStyles(colors);
 
-      <View style={styles.form}>
-        <Text style={styles.label}>Title *</Text>
+  return (
+    <SafeAreaView edges={['bottom']}>
+      <ScrollView style={s.container} keyboardShouldPersistTaps="handled">
+        <Text style={s.screenTitle}>{isEdit ? 'Edit Track' : 'New Track'}</Text>
+
+        {/* Title */}
+        <Text style={s.label}>Title <Text style={s.required}>*</Text></Text>
         <TextInput
-          style={styles.input}
-          placeholder="Enter track title"
+          style={s.input}
+          placeholder="What are you working on?"
+          placeholderTextColor={colors.textTertiary}
           value={title}
           onChangeText={setTitle}
         />
 
-        <Text style={styles.label}>Description *</Text>
+        {/* Description */}
+        <Text style={s.label}>Description</Text>
         <TextInput
-          style={[styles.input, styles.textArea]}
-          placeholder="Enter track description"
+          style={[s.input, s.textArea]}
+          placeholder="Add more context (optional)"
+          placeholderTextColor={colors.textTertiary}
           value={description}
           onChangeText={setDescription}
           multiline
           numberOfLines={4}
+          textAlignVertical="top"
         />
 
-        <Text style={styles.label}>Status</Text>
-        <View style={styles.optionsContainer}>
-          {['pending', 'in-progress', 'completed'].map((s) => (
+        {/* Status */}
+        <Text style={s.label}>Status</Text>
+        <View style={s.chips}>
+          {(['pending', 'in-progress', 'completed'] as const).map((s_) => (
             <TouchableOpacity
-              key={s}
-              style={[
-                styles.optionButton,
-                status === s && styles.optionButtonActive,
-              ]}
-              onPress={() => setStatus(s as any)}
+              key={s_}
+              style={[s.chip, status === s_ && s.chipActive]}
+              onPress={() => setStatus(s_)}
             >
-              <Text
-                style={[
-                  styles.optionButtonText,
-                  status === s && styles.optionButtonTextActive,
-                ]}
-              >
-                {s}
-              </Text>
+              <Text style={[s.chipText, status === s_ && s.chipTextActive]}>{s_}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        <Text style={styles.label}>Priority</Text>
-        <View style={styles.optionsContainer}>
-          {['low', 'medium', 'high'].map((p) => (
+        {/* Priority */}
+        <Text style={s.label}>Priority</Text>
+        <View style={s.chips}>
+          {(['low', 'medium', 'high'] as const).map((p) => (
             <TouchableOpacity
               key={p}
-              style={[
-                styles.optionButton,
-                priority === p && styles.optionButtonActive,
-              ]}
-              onPress={() => setPriority(p as any)}
+              style={[s.chip, priority === p && s.chipActive]}
+              onPress={() => setPriority(p)}
             >
-              <Text
-                style={[
-                  styles.optionButtonText,
-                  priority === p && styles.optionButtonTextActive,
-                ]}
-              >
-                {p}
-              </Text>
+              <Text style={[s.chipText, priority === p && s.chipTextActive]}>{p}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        <Text style={styles.label}>Tags (comma separated)</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="e.g. work, urgent, bug"
-          value={tags}
-          onChangeText={setTags}
-        />
+        {/* Tags */}
+        <Text style={s.label}>Tags</Text>
 
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity
-            style={[styles.button, styles.cancelButton]}
-            onPress={() => navigation.goBack()}
-          >
-            <Text style={styles.cancelButtonText}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.button, styles.saveButton]}
-            onPress={handleSave}
-          >
-            <Text style={styles.saveButtonText}>
-              {isEdit ? 'Update' : 'Create'}
-            </Text>
+        {/* Selected tags */}
+        {selectedTags.length > 0 && (
+          <View style={s.selectedTags}>
+            {selectedTags.map((tag) => (
+              <TouchableOpacity
+                key={tag}
+                style={s.selectedTag}
+                onPress={() => removeTag(tag)}
+              >
+                <Text style={s.selectedTagText}>#{tag}</Text>
+                <Text style={s.selectedTagRemove}> ✕</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* Predefined tag chips */}
+        <View style={s.chips}>
+          {PREDEFINED_TAGS.filter((t) => !selectedTags.includes(t)).map((tag) => (
+            <TouchableOpacity
+              key={tag}
+              style={s.chip}
+              onPress={() => toggleTag(tag)}
+            >
+              <Text style={s.chipText}>+ {tag}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Custom tag input */}
+        <View style={s.customTagRow}>
+          <TextInput
+            style={[s.input, s.customTagInput]}
+            placeholder="Add custom tag…"
+            placeholderTextColor={colors.textTertiary}
+            value={customTag}
+            onChangeText={setCustomTag}
+            onSubmitEditing={addCustomTag}
+            returnKeyType="done"
+            autoCapitalize="none"
+          />
+          <TouchableOpacity style={s.addTagBtn} onPress={addCustomTag}>
+            <Text style={s.addTagBtnText}>Add</Text>
           </TouchableOpacity>
         </View>
-      </View>
-    </ScrollView>
+
+        {/* Actions */}
+        <View style={s.actions}>
+          <TouchableOpacity style={s.cancelBtn} onPress={() => navigation.goBack()}>
+            <Text style={s.cancelBtnText}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.saveBtn} onPress={handleSave}>
+            <Text style={s.saveBtnText}>{isEdit ? 'Update' : 'Create'}</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  header: {
-    padding: 20,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  form: {
-    padding: 20,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 8,
-    marginTop: 16,
-  },
-  input: {
-    backgroundColor: '#fff',
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    fontSize: 16,
-  },
-  textArea: {
-    height: 100,
-    textAlignVertical: 'top',
-  },
-  optionsContainer: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  optionButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    backgroundColor: '#fff',
-  },
-  optionButtonActive: {
-    backgroundColor: '#2196F3',
-    borderColor: '#2196F3',
-  },
-  optionButtonText: {
-    fontSize: 14,
-    color: '#666',
-    fontWeight: '500',
-  },
-  optionButtonTextActive: {
-    color: '#fff',
-  },
-  buttonContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 32,
-  },
-  button: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  cancelButton: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-  },
-  cancelButtonText: {
-    color: '#666',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  saveButton: {
-    backgroundColor: '#2196F3',
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-});
+function makeStyles(colors: any) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background, padding: 20 },
+    screenTitle: {
+      fontSize: 24,
+      fontWeight: '700',
+      color: colors.text,
+      marginBottom: 20,
+    },
+    label: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.textSecondary,
+      marginTop: 18,
+      marginBottom: 8,
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+    },
+    required: { color: colors.priorityHigh },
+    input: {
+      backgroundColor: colors.surface,
+      color: colors.text,
+      padding: 12,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      fontSize: 15,
+    },
+    textArea: { height: 100 },
+    chips: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+    },
+    chip: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    chipActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    chipText: {
+      fontSize: 13,
+      color: colors.textSecondary,
+      fontWeight: '500',
+    },
+    chipTextActive: {
+      color: '#fff',
+    },
+    selectedTags: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginBottom: 10,
+    },
+    selectedTag: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 16,
+      backgroundColor: colors.primary + '22',
+      borderWidth: 1,
+      borderColor: colors.primary,
+    },
+    selectedTagText: {
+      color: colors.primary,
+      fontSize: 13,
+      fontWeight: '500',
+    },
+    selectedTagRemove: {
+      color: colors.primary,
+      fontSize: 12,
+      marginLeft: 2,
+    },
+    customTagRow: {
+      flexDirection: 'row',
+      gap: 8,
+      marginTop: 12,
+      alignItems: 'center',
+    },
+    customTagInput: { flex: 1 },
+    addTagBtn: {
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderRadius: 10,
+      backgroundColor: colors.primary,
+    },
+    addTagBtnText: {
+      color: '#fff',
+      fontWeight: '600',
+      fontSize: 14,
+    },
+    actions: {
+      flexDirection: 'row',
+      gap: 12,
+      marginTop: 36,
+      marginBottom: 20,
+    },
+    cancelBtn: {
+      flex: 1,
+      padding: 16,
+      borderRadius: 12,
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    cancelBtnText: {
+      color: colors.textSecondary,
+      fontSize: 16,
+      fontWeight: '600',
+    },
+    saveBtn: {
+      flex: 1,
+      padding: 16,
+      borderRadius: 12,
+      alignItems: 'center',
+      backgroundColor: colors.primary,
+    },
+    saveBtnText: {
+      color: '#fff',
+      fontSize: 16,
+      fontWeight: '600',
+    },
+  });
+}
