@@ -1,40 +1,60 @@
+/**
+ * TrackContext.tsx
+ *
+ * Provides track CRUD to the entire app.
+ * Now depends only on ITrackRepository (via LocalStorageAdapter).
+ * Mirror writes to ApiServerAdapter happen here when sync is enabled.
+ */
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Track } from '../types/Track';
-import { apiService } from '../services/api';
-import { backendToFrontend, frontendToBackendCreate, frontendToBackendUpdate } from '../utils/trackMapper';
+import { localStorageAdapter } from '../adapters/LocalStorageAdapter';
+import { apiServerAdapter } from '../adapters/ApiServerAdapter';
+import { useSyncContext } from './SyncContext';
 
 interface TrackContextType {
   tracks: Track[];
   loading: boolean;
   error: string | null;
   addTrack: (track: Omit<Track, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
-  updateTrack: (id: number, track: Partial<Track>) => Promise<void>;
-  deleteTrack: (id: number) => Promise<void>;
-  getTrackById: (id: number) => Track | undefined;
+  updateTrack: (id: string, changes: Partial<Omit<Track, 'id' | 'createdAt'>>) => Promise<void>;
+  deleteTrack: (id: string) => Promise<void>;
+  getTrackById: (id: string) => Track | undefined;
   searchTracks: (query: string) => Track[];
   refreshTracks: () => Promise<void>;
+  addTag: (trackId: string, tag: string) => Promise<void>;
+  removeTag: (trackId: string, tag: string) => Promise<void>;
+  /** Wipe all local data. Pass deleteKey=true for a full factory reset. */
+  clearAllData: (deleteKey?: boolean) => Promise<void>;
 }
 
 const TrackContext = createContext<TrackContextType | undefined>(undefined);
 
-export const useTrackContext = () => {
-  const context = useContext(TrackContext);
-  if (!context) {
-    throw new Error('useTrackContext must be used within a TrackProvider');
-  }
-  return context;
+export const useTrackContext = (): TrackContextType => {
+  const ctx = useContext(TrackContext);
+  if (!ctx) throw new Error('useTrackContext must be used within a TrackProvider');
+  return ctx;
 };
 
-interface TrackProviderProps {
-  children: ReactNode;
-}
-
-export const TrackProvider: React.FC<TrackProviderProps> = ({ children }) => {
+export const TrackProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [tracks, setTracks] = useState<Track[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch tracks from backend on mount
+  const { syncEnabled } = useSyncContext();
+
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+
+  /** Mirror a write to the backend silently when sync is enabled. */
+  const mirrorToRemote = async (action: () => Promise<void>) => {
+    if (!syncEnabled) return;
+    try {
+      await action();
+    } catch {
+      // Silent — local write already succeeded; sync error shown by SyncContext badge
+    }
+  };
+
+  // ── Load ─────────────────────────────────────────────────────────────────────
   useEffect(() => {
     refreshTracks();
   }, []);
@@ -43,80 +63,106 @@ export const TrackProvider: React.FC<TrackProviderProps> = ({ children }) => {
     try {
       setLoading(true);
       setError(null);
-      const backendTrackers = await apiService.getAllTrackers();
-      const frontendTracks = backendTrackers.map(backendToFrontend);
-      setTracks(frontendTracks);
-    } catch (err) {
-      setError('Failed to load tracks from server');
-      console.error('Error loading tracks:', err);
+      const all = await localStorageAdapter.getAll();
+      setTracks(all);
+    } catch (e) {
+      setError('Failed to load tracks.');
+      console.error(e);
     } finally {
       setLoading(false);
     }
   };
 
-  const addTrack = async (track: Omit<Track, 'id' | 'createdAt' | 'updatedAt'>) => {
-    try {
-      setError(null);
-      const createRequest = frontendToBackendCreate(track);
-      const backendTracker = await apiService.createTracker(createRequest);
-      const newTrack = backendToFrontend(backendTracker);
-      setTracks((prev) => [newTrack, ...prev]);
-    } catch (err) {
-      setError('Failed to create track');
-      console.error('Error creating track:', err);
-      throw err;
-    }
-  };
+  // ── CRUD ──────────────────────────────────────────────────────────────────────
 
-  const updateTrack = async (id: number, updatedFields: Partial<Track>) => {
-    try {
-      setError(null);
-      // Get the current track to merge fields
-      const currentTrack = tracks.find(t => t.id === id);
-      if (!currentTrack) {
-        throw new Error('Track not found');
-      }
+  const addTrack = async (
+    track: Omit<Track, 'id' | 'createdAt' | 'updatedAt'>
+  ): Promise<void> => {
+    setError(null);
+    const created = await localStorageAdapter.create(track);
+    setTracks((prev) => [created, ...prev]);
 
-      // Merge current track with updates for complete data
-      const mergedTrack = { ...currentTrack, ...updatedFields };
-      const updateRequest = frontendToBackendUpdate(mergedTrack);
-      
-      const backendTracker = await apiService.updateTracker(id, updateRequest);
-      const updatedTrack = backendToFrontend(backendTracker);
-      
+    await mirrorToRemote(async () => {
+      const remote = await apiServerAdapter.create(track);
+      // Store remoteId back locally
+      await localStorageAdapter.update(created.id, { remoteId: remote.remoteId });
       setTracks((prev) =>
-        prev.map((track) => (track.id === id ? updatedTrack : track))
+        prev.map((t) => (t.id === created.id ? { ...t, remoteId: remote.remoteId } : t))
       );
-    } catch (err) {
-      setError('Failed to update track');
-      console.error('Error updating track:', err);
-      throw err;
-    }
+    });
   };
 
-  const deleteTrack = async (id: number) => {
-    try {
-      setError(null);
-      await apiService.deleteTracker(id);
-      setTracks((prev) => prev.filter((track) => track.id !== id));
-    } catch (err) {
-      setError('Failed to delete track');
-      console.error('Error deleting track:', err);
-      throw err;
-    }
+  const updateTrack = async (
+    id: string,
+    changes: Partial<Omit<Track, 'id' | 'createdAt'>>
+  ): Promise<void> => {
+    setError(null);
+    const updated = await localStorageAdapter.update(id, changes);
+    setTracks((prev) => prev.map((t) => (t.id === id ? updated : t)));
+
+    await mirrorToRemote(async () => {
+      const current = tracks.find((t) => t.id === id);
+      if (current?.remoteId) {
+        await apiServerAdapter.update(current.remoteId.toString(), changes);
+      }
+    });
   };
 
-  const getTrackById = (id: number): Track | undefined => {
-    return tracks.find((track) => track.id === id);
+  const deleteTrack = async (id: string): Promise<void> => {
+    setError(null);
+    const current = tracks.find((t) => t.id === id);
+    await localStorageAdapter.delete(id);
+    setTracks((prev) => prev.filter((t) => t.id !== id));
+
+    await mirrorToRemote(async () => {
+      if (current?.remoteId) {
+        await apiServerAdapter.delete(current.remoteId.toString());
+      }
+    });
   };
+
+  const addTag = async (trackId: string, tag: string): Promise<void> => {
+    setError(null);
+    const updated = await localStorageAdapter.addTag(trackId, tag);
+    setTracks((prev) => prev.map((t) => (t.id === trackId ? updated : t)));
+
+    await mirrorToRemote(async () => {
+      const current = tracks.find((t) => t.id === trackId);
+      if (current?.remoteId) {
+        await apiServerAdapter.addTag(current.remoteId.toString(), tag);
+      }
+    });
+  };
+
+  const removeTag = async (trackId: string, tag: string): Promise<void> => {
+    setError(null);
+    const updated = await localStorageAdapter.removeTag(trackId, tag);
+    setTracks((prev) => prev.map((t) => (t.id === trackId ? updated : t)));
+
+    await mirrorToRemote(async () => {
+      const current = tracks.find((t) => t.id === trackId);
+      if (current?.remoteId) {
+        await apiServerAdapter.removeTag(current.remoteId.toString(), tag);
+      }
+    });
+  };
+
+  const clearAllData = async (deleteKey = false): Promise<void> => {
+    setError(null);
+    await localStorageAdapter.clearAllData(deleteKey);
+    setTracks([]);
+  };
+
+  const getTrackById = (id: string): Track | undefined =>
+    tracks.find((t) => t.id === id);
 
   const searchTracks = (query: string): Track[] => {
-    const lowerQuery = query.toLowerCase();
+    const q = query.toLowerCase();
     return tracks.filter(
-      (track) =>
-        track.title.toLowerCase().includes(lowerQuery) ||
-        track.description.toLowerCase().includes(lowerQuery) ||
-        track.tags?.some((tag) => tag.toLowerCase().includes(lowerQuery))
+      (t) =>
+        t.title.toLowerCase().includes(q) ||
+        t.description.toLowerCase().includes(q) ||
+        t.tags?.some((tag) => tag.toLowerCase().includes(q))
     );
   };
 
@@ -132,6 +178,9 @@ export const TrackProvider: React.FC<TrackProviderProps> = ({ children }) => {
         getTrackById,
         searchTracks,
         refreshTracks,
+        addTag,
+        removeTag,
+        clearAllData,
       }}
     >
       {children}

@@ -34,7 +34,7 @@ export default function HomeScreen({ navigation }: Props) {
     setRefreshing(false);
   };
 
-  const handleDelete = (id: number, title: string) => {
+  const handleDelete = (id: string, title: string) => {
     Alert.alert(
       'Delete Track',
       `Are you sure you want to delete "${title}"?`,
@@ -177,7 +177,7 @@ export default function HomeScreen({ navigation }: Props) {
 
         <FlatList
           data={displayedTracks}
-          keyExtractor={(item) => item.id.toString()}
+          keyExtractor={(item) => item.id}
           refreshing={refreshing}
           onRefresh={onRefresh}
           renderItem={({ item }) => (
