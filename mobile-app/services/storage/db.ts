@@ -84,6 +84,77 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
     }
   }
 
+  // Self-healing migration: check if tracks table enforces old CHECK constraint without 'created'
+  try {
+    const tableInfo = await db.getFirstAsync<{ sql: string }>(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='tracks';"
+    );
+    const tableSql = tableInfo?.sql || '';
+    if (tableSql && !tableSql.includes("'created'") && !tableSql.includes('"created"')) {
+      console.log('[db] Migrating tracks table to support created and time-allocated statuses...');
+      await db.execAsync('PRAGMA foreign_keys = OFF;');
+      await db.execAsync(`
+        CREATE TABLE tracks_new (
+          id                   TEXT PRIMARY KEY,
+          remote_id            INTEGER,
+          title                TEXT NOT NULL,
+          description          TEXT NOT NULL DEFAULT '',
+          status               TEXT NOT NULL DEFAULT 'created'
+                                 CHECK(status IN ('created','pending','time-allocated','in-progress','completed')),
+          priority             TEXT NOT NULL DEFAULT 'medium'
+                                 CHECK(priority IN ('low','medium','high')),
+          task_type            TEXT NOT NULL DEFAULT 'unallocated'
+                                 CHECK(task_type IN ('unallocated','allocated')),
+          time_input_mode      TEXT CHECK(time_input_mode IN ('start-end','start-duration','duration-only')),
+          allocated_start_time TEXT,
+          allocated_end_time   TEXT,
+          block_multiplier     INTEGER,
+          duration_minutes     INTEGER,
+          start_time           TEXT NOT NULL,
+          end_time             TEXT,
+          created_at           TEXT NOT NULL,
+          updated_at           TEXT NOT NULL
+        );
+
+        INSERT INTO tracks_new (
+          id, remote_id, title, description, status, priority,
+          task_type, time_input_mode, allocated_start_time, allocated_end_time,
+          block_multiplier, duration_minutes,
+          start_time, end_time, created_at, updated_at
+        )
+        SELECT
+          id,
+          remote_id,
+          title,
+          COALESCE(description, ''),
+          CASE 
+            WHEN status IN ('created','pending','time-allocated','in-progress','completed') THEN status
+            ELSE 'created'
+          END,
+          COALESCE(priority, 'medium'),
+          COALESCE(task_type, 'unallocated'),
+          time_input_mode,
+          allocated_start_time,
+          allocated_end_time,
+          block_multiplier,
+          duration_minutes,
+          start_time,
+          end_time,
+          created_at,
+          updated_at
+        FROM tracks;
+
+        DROP TABLE tracks;
+        ALTER TABLE tracks_new RENAME TO tracks;
+      `);
+      await db.execAsync('PRAGMA foreign_keys = ON;');
+      console.log('[db] tracks table successfully migrated to new schema.');
+    }
+  } catch (err) {
+    console.error('[db] Error updating tracks table schema:', err);
+    await db.execAsync('PRAGMA foreign_keys = ON;').catch(() => {});
+  }
+
   // ── tags table ─────────────────────────────────────────────────────────────
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS tags (
@@ -240,6 +311,11 @@ async function runMigrations(
       // v4: routine tables already created above; just stamp version
       version: 4,
       sql: `INSERT OR IGNORE INTO schema_version(version) VALUES (4);`,
+    },
+    {
+      // v5: tracks status CHECK constraint update
+      version: 5,
+      sql: `INSERT OR IGNORE INTO schema_version(version) VALUES (5);`,
     },
   ];
 
