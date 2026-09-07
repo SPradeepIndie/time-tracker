@@ -64,7 +64,9 @@ export class LocalStorageAdapter implements ITrackRepository {
     changes: Partial<Omit<Track, 'id' | 'createdAt'>>
   ): Promise<Track> {
     const db = await getDatabase();
-    return queryUpdate(db, id, changes, await this.key());
+    const result = await queryUpdate(db, id, changes, await this.key());
+    if (!result) throw new Error(`Track ${id} not found`);
+    return result;
   }
 
   async delete(id: string): Promise<void> {

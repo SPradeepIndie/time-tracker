@@ -17,7 +17,7 @@ import {
 import { CreateEditScreenNavigationProp, CreateEditScreenRouteProp } from '../../navigation/types';
 import { useTrackContext } from '../../context/TrackContext';
 import { useTheme } from '../../context/ThemeContext';
-import { PREDEFINED_TAGS } from '../../types/Track';
+import { PREDEFINED_TAGS, TaskStatus } from '../../types/Track';
 import { SafeAreaView } from '../../components/layout/SafeAreaView';
 
 interface Props {
@@ -32,7 +32,7 @@ export default function CreateEditScreen({ navigation, route }: Props) {
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [status, setStatus] = useState<'pending' | 'in-progress' | 'completed'>('pending');
+  const [status, setStatus] = useState<TaskStatus>('created');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [customTag, setCustomTag] = useState('');
@@ -97,6 +97,7 @@ export default function CreateEditScreen({ navigation, route }: Props) {
           description: description.trim(),
           status,
           priority,
+          taskType: 'unallocated',
           tags: selectedTags,
           startTime: new Date(),
           endTime: status === 'completed' ? new Date() : undefined,

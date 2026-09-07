@@ -29,7 +29,7 @@ func Repository(db *sql.DB, logger *logger.Logger) *repository {
 
 func (r *repository) GetAllTrackers() ([]model.Tracker, error) {
 	query := `
-		SELECT id, task, start_time, end_time, created_at, updated_at 
+		SELECT id, title, start_time, end_time, created_at, updated_at 
 		FROM tracker 
 		ORDER BY created_at DESC`
 
@@ -44,7 +44,7 @@ func (r *repository) GetAllTrackers() ([]model.Tracker, error) {
 
 	for rows.Next() {
 		var t model.Tracker
-		if err := rows.Scan(&t.ID, &t.Task, &t.StartTime, &t.EndTime, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.Title, &t.StartTime, &t.EndTime, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, errorutil.Wrap(err, "scanning tracker row")
 		}
 		trackers = append(trackers, t)
@@ -56,13 +56,13 @@ func (r *repository) GetAllTrackers() ([]model.Tracker, error) {
 
 func (r *repository) CreateTracker(req model.CreateTrackerRequest) (*model.Tracker, error) {
 	query := `
-		INSERT INTO tracker (task, start_time, end_time) 
+		INSERT INTO tracker (title, start_time, end_time) 
 		VALUES ($1, $2, $3) 
-		RETURNING id, task, start_time, end_time, created_at, updated_at`
+		RETURNING id, title, start_time, end_time, created_at, updated_at`
 
 	var tracker model.Tracker
-	err := r.db.QueryRow(query, req.Task, req.StartTime, req.EndTime).Scan(
-		&tracker.ID, &tracker.Task, &tracker.StartTime, &tracker.EndTime,
+	err := r.db.QueryRow(query, req.Title, req.StartTime, req.EndTime).Scan(
+		&tracker.ID, &tracker.Title, &tracker.StartTime, &tracker.EndTime,
 		&tracker.CreatedAt, &tracker.UpdatedAt)
 
 	if err != nil {
@@ -75,13 +75,13 @@ func (r *repository) CreateTracker(req model.CreateTrackerRequest) (*model.Track
 
 func (r *repository) GetTrackerByID(id int) (*model.Tracker, error) {
 	query := `
-		SELECT id, task, start_time, end_time, created_at, updated_at 
+		SELECT id, title, start_time, end_time, created_at, updated_at 
 		FROM tracker 
 		WHERE id = $1`
 
 	var tracker model.Tracker
 	err := r.db.QueryRow(query, id).Scan(
-		&tracker.ID, &tracker.Task, &tracker.StartTime, &tracker.EndTime,
+		&tracker.ID, &tracker.Title, &tracker.StartTime, &tracker.EndTime,
 		&tracker.CreatedAt, &tracker.UpdatedAt)
 
 	if err == sql.ErrNoRows {
@@ -100,9 +100,9 @@ func (r *repository) UpdateTracker(id int, req model.UpdateTrackerRequest) (*mod
 	args := []interface{}{}
 	argIndex := 1
 
-	if req.Task != nil {
-		setParts = append(setParts, fmt.Sprintf("task = $%d", argIndex))
-		args = append(args, *req.Task)
+	if req.Title != nil {
+		setParts = append(setParts, fmt.Sprintf("title = $%d", argIndex))
+		args = append(args, *req.Title)
 		argIndex++
 	}
 	if req.StartTime != nil {
@@ -130,12 +130,12 @@ func (r *repository) UpdateTracker(id int, req model.UpdateTrackerRequest) (*mod
 		UPDATE tracker 
 		SET %s 
 		WHERE id = $%d 
-		RETURNING id, task, start_time, end_time, created_at, updated_at`,
+		RETURNING id, title, start_time, end_time, created_at, updated_at`,
 		strings.Join(setParts, ", "), argIndex)
 
 	var tracker model.Tracker
 	err := r.db.QueryRow(query, args...).Scan(
-		&tracker.ID, &tracker.Task, &tracker.StartTime, &tracker.EndTime,
+		&tracker.ID, &tracker.Title, &tracker.StartTime, &tracker.EndTime,
 		&tracker.CreatedAt, &tracker.UpdatedAt)
 
 	if err == sql.ErrNoRows {

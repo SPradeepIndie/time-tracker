@@ -3,21 +3,27 @@
  *
  * Raw SQL CRUD operations for the tracks and tags tables.
  * All sensitive fields (title, description) are encrypted/decrypted here.
- * This module is ONLY used by LocalStorageAdapter — never imported by UI.
+ * Extended to support the full Track state machine and allocated time fields.
  */
 import { SQLiteDatabase } from 'expo-sqlite';
 import { Track } from '../../types/Track';
 import { encrypt, decrypt } from './encryption';
 
-// ── Row types (as stored in SQLite) ──────────────────────────────────────────
+// ── Row types ─────────────────────────────────────────────────────────────────
 
 interface TrackRow {
   id: string;
   remote_id: number | null;
-  title: string;         // encrypted
-  description: string;   // encrypted
+  title: string;
+  description: string;
   status: string;
   priority: string;
+  task_type: string;
+  time_input_mode: string | null;
+  allocated_start_time: string | null;
+  allocated_end_time: string | null;
+  block_multiplier: number | null;
+  duration_minutes: number | null;
   start_time: string;
   end_time: string | null;
   created_at: string;
@@ -38,6 +44,12 @@ async function rowToTrack(row: TrackRow, tags: string[], key: string): Promise<T
     description: await decrypt(row.description, key),
     status: row.status as Track['status'],
     priority: row.priority as Track['priority'],
+    taskType: (row.task_type as Track['taskType']) ?? 'unallocated',
+    timeInputMode: (row.time_input_mode as Track['timeInputMode']) ?? undefined,
+    allocatedStartTime: row.allocated_start_time ? new Date(row.allocated_start_time) : undefined,
+    allocatedEndTime: row.allocated_end_time ? new Date(row.allocated_end_time) : undefined,
+    blockMultiplier: row.block_multiplier ?? undefined,
+    durationMinutes: row.duration_minutes ?? undefined,
     startTime: new Date(row.start_time),
     endTime: row.end_time ? new Date(row.end_time) : undefined,
     createdAt: new Date(row.created_at),
@@ -84,7 +96,7 @@ export async function queryGetById(
 
 export async function queryCreate(
   db: SQLiteDatabase,
-  track: Omit<Track, 'id' | 'createdAt' | 'updatedAt'> & { id: string },
+  track: Omit<Track, 'createdAt' | 'updatedAt'> & { id: string },
   key: string
 ): Promise<Track> {
   const now = new Date().toISOString();
@@ -92,8 +104,12 @@ export async function queryCreate(
   const encDesc = await encrypt(track.description, key);
 
   await db.runAsync(
-    `INSERT INTO tracks (id, remote_id, title, description, status, priority, start_time, end_time, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+    `INSERT INTO tracks (
+        id, remote_id, title, description, status, priority,
+        task_type, time_input_mode, allocated_start_time, allocated_end_time,
+        block_multiplier, duration_minutes,
+        start_time, end_time, created_at, updated_at
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);`,
     [
       track.id,
       track.remoteId ?? null,
@@ -101,6 +117,12 @@ export async function queryCreate(
       encDesc,
       track.status,
       track.priority,
+      track.taskType,
+      track.timeInputMode ?? null,
+      track.allocatedStartTime?.toISOString() ?? null,
+      track.allocatedEndTime?.toISOString() ?? null,
+      track.blockMultiplier ?? null,
+      track.durationMinutes ?? null,
       track.startTime.toISOString(),
       track.endTime?.toISOString() ?? null,
       now,
@@ -108,66 +130,59 @@ export async function queryCreate(
     ]
   );
 
-  // Insert tags
-  for (const tag of track.tags ?? []) {
-    await db.runAsync(
-      'INSERT OR IGNORE INTO tags (track_id, name) VALUES (?, ?);',
-      [track.id, tag]
-    );
+  if (track.tags && track.tags.length > 0) {
+    for (const tag of track.tags) {
+      await db.runAsync(
+        'INSERT OR IGNORE INTO tags (track_id, name) VALUES (?, ?);',
+        [track.id, tag]
+      );
+    }
   }
 
-  return queryGetById(db, track.id, key) as Promise<Track>;
+  return { ...track, createdAt: new Date(now), updatedAt: new Date(now) };
 }
 
 export async function queryUpdate(
   db: SQLiteDatabase,
   id: string,
-  changes: Partial<Omit<Track, 'id' | 'createdAt'>>,
+  updates: Partial<Track>,
   key: string
-): Promise<Track> {
-  const now = new Date().toISOString();
-  const updates: string[] = ['updated_at = ?'];
-  const values: (string | number | null)[] = [now];
+): Promise<Track | null> {
+  const existing = await queryGetById(db, id, key);
+  if (!existing) return null;
 
-  if (changes.title !== undefined) {
-    updates.push('title = ?');
-    values.push(await encrypt(changes.title, key));
-  }
-  if (changes.description !== undefined) {
-    updates.push('description = ?');
-    values.push(await encrypt(changes.description, key));
-  }
-  if (changes.status !== undefined) {
-    updates.push('status = ?');
-    values.push(changes.status);
-  }
-  if (changes.priority !== undefined) {
-    updates.push('priority = ?');
-    values.push(changes.priority);
-  }
-  if (changes.startTime !== undefined) {
-    updates.push('start_time = ?');
-    values.push(changes.startTime.toISOString());
-  }
-  if ('endTime' in changes) {
-    updates.push('end_time = ?');
-    values.push(changes.endTime?.toISOString() ?? null);
-  }
-  if (changes.remoteId !== undefined) {
-    updates.push('remote_id = ?');
-    values.push(changes.remoteId);
-  }
+  const updated: Track = { ...existing, ...updates, updatedAt: new Date() };
+  const encTitle = await encrypt(updated.title, key);
+  const encDesc = await encrypt(updated.description, key);
 
-  values.push(id);
   await db.runAsync(
-    `UPDATE tracks SET ${updates.join(', ')} WHERE id = ?;`,
-    values
+    `UPDATE tracks SET
+        title=?, description=?, status=?, priority=?,
+        task_type=?, time_input_mode=?, allocated_start_time=?, allocated_end_time=?,
+        block_multiplier=?, duration_minutes=?,
+        start_time=?, end_time=?, updated_at=?
+      WHERE id=?;`,
+    [
+      encTitle,
+      encDesc,
+      updated.status,
+      updated.priority,
+      updated.taskType,
+      updated.timeInputMode ?? null,
+      updated.allocatedStartTime?.toISOString() ?? null,
+      updated.allocatedEndTime?.toISOString() ?? null,
+      updated.blockMultiplier ?? null,
+      updated.durationMinutes ?? null,
+      updated.startTime.toISOString(),
+      updated.endTime?.toISOString() ?? null,
+      updated.updatedAt.toISOString(),
+      id,
+    ]
   );
 
-  // Replace tags if provided
-  if (changes.tags !== undefined) {
+  if (updates.tags !== undefined) {
     await db.runAsync('DELETE FROM tags WHERE track_id = ?;', [id]);
-    for (const tag of changes.tags) {
+    for (const tag of updated.tags) {
       await db.runAsync(
         'INSERT OR IGNORE INTO tags (track_id, name) VALUES (?, ?);',
         [id, tag]
@@ -175,11 +190,11 @@ export async function queryUpdate(
     }
   }
 
-  return queryGetById(db, id, key) as Promise<Track>;
+  if (!updated) throw new Error(`Track ${id} not found after update`);
+  return updated;
 }
 
 export async function queryDelete(db: SQLiteDatabase, id: string): Promise<void> {
-  // Cascade delete removes tags automatically (FK + ON DELETE CASCADE)
   await db.runAsync('DELETE FROM tracks WHERE id = ?;', [id]);
 }
 
@@ -193,12 +208,9 @@ export async function queryAddTag(
     'INSERT OR IGNORE INTO tags (track_id, name) VALUES (?, ?);',
     [trackId, tag]
   );
-  // bump updatedAt
-  await db.runAsync(
-    'UPDATE tracks SET updated_at = ? WHERE id = ?;',
-    [new Date().toISOString(), trackId]
-  );
-  return queryGetById(db, trackId, key) as Promise<Track>;
+  const updated = await queryGetById(db, trackId, key);
+  if (!updated) throw new Error(`Track ${trackId} not found`);
+  return updated;
 }
 
 export async function queryRemoveTag(
@@ -211,17 +223,49 @@ export async function queryRemoveTag(
     'DELETE FROM tags WHERE track_id = ? AND name = ?;',
     [trackId, tag]
   );
-  await db.runAsync(
-    'UPDATE tracks SET updated_at = ? WHERE id = ?;',
-    [new Date().toISOString(), trackId]
-  );
-  return queryGetById(db, trackId, key) as Promise<Track>;
+  const updated = await queryGetById(db, trackId, key);
+  if (!updated) throw new Error(`Track ${trackId} not found`);
+  return updated;
 }
 
-/** Delete ALL tracks and tags — used by the "Clear All Data" settings action. */
 export async function queryClearAll(db: SQLiteDatabase): Promise<void> {
-  // Tags are cascade-deleted when tracks are deleted, but
-  // explicit delete first is safer across all SQLite configurations.
   await db.runAsync('DELETE FROM tags;');
   await db.runAsync('DELETE FROM tracks;');
+}
+
+export async function queryUpdateStatus(
+  db: SQLiteDatabase,
+  id: string,
+  status: string
+): Promise<void> {
+  await db.runAsync(
+    'UPDATE tracks SET status=?, updated_at=? WHERE id=?;',
+    [status, new Date().toISOString(), id]
+  );
+}
+
+/** Returns all allocated (in-progress) tasks whose end time has passed — used to trigger completion notifications */
+export async function queryGetExpiredAllocatedTasks(db: SQLiteDatabase): Promise<{ id: string; allocated_end_time: string; title: string }[]> {
+  const now = new Date().toISOString();
+  return db.getAllAsync<{ id: string; allocated_end_time: string; title: string }>(
+    `SELECT id, allocated_end_time, title FROM tracks
+     WHERE task_type = 'allocated'
+       AND status = 'in-progress'
+       AND allocated_end_time IS NOT NULL
+       AND allocated_end_time <= ?;`,
+    [now]
+  );
+}
+
+/** Returns all allocated tasks that should now transition to in-progress */
+export async function queryGetDueAllocatedTasks(db: SQLiteDatabase): Promise<{ id: string; allocated_start_time: string; title: string }[]> {
+  const now = new Date().toISOString();
+  return db.getAllAsync<{ id: string; allocated_start_time: string; title: string }>(
+    `SELECT id, allocated_start_time, title FROM tracks
+     WHERE task_type = 'allocated'
+       AND status = 'time-allocated'
+       AND allocated_start_time IS NOT NULL
+       AND allocated_start_time <= ?;`,
+    [now]
+  );
 }
