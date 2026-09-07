@@ -10,6 +10,7 @@ import { Track } from '../types/Track';
 import { localStorageAdapter } from '../adapters/LocalStorageAdapter';
 import { apiServerAdapter } from '../adapters/ApiServerAdapter';
 import { useSyncContext } from './SyncContext';
+import { resetDatabase } from '../services/storage/db';
 
 interface TrackContextType {
   tracks: Track[];
@@ -151,6 +152,9 @@ export const TrackProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setError(null);
     await localStorageAdapter.clearAllData(deleteKey);
     setTracks([]);
+    if (deleteKey) {
+      await resetDatabase();
+    }
   };
 
   const getTrackById = (id: string): Track | undefined =>

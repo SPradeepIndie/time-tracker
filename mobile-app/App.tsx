@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { SyncProvider } from './context/SyncContext';
 import { TrackProvider } from './context/TrackContext';
@@ -27,17 +28,19 @@ function AppContent() {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      {/* SyncProvider wraps TrackProvider so TrackContext can read syncEnabled */}
-      <SyncProvider>
-        <TrackProvider>
-          <GoalProvider>
-            <RoutineProvider>
-              <AppContent />
-            </RoutineProvider>
-          </GoalProvider>
-        </TrackProvider>
-      </SyncProvider>
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <ThemeProvider>
+        {/* SyncProvider wraps TrackProvider so TrackContext can read syncEnabled */}
+        <SyncProvider>
+          <TrackProvider>
+            <GoalProvider>
+              <RoutineProvider>
+                <AppContent />
+              </RoutineProvider>
+            </GoalProvider>
+          </TrackProvider>
+        </SyncProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }
