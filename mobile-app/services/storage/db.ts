@@ -13,12 +13,24 @@
 import * as SQLite from 'expo-sqlite';
 
 let _db: SQLite.SQLiteDatabase | null = null;
+let _initPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
 export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
   if (_db) return _db;
-  _db = await SQLite.openDatabaseAsync('time_tracker.db');
-  await initDatabase(_db);
-  return _db;
+  if (_initPromise) return _initPromise;
+
+  _initPromise = (async () => {
+    try {
+      const db = await SQLite.openDatabaseAsync('time_tracker.db');
+      await initDatabase(db);
+      _db = db;
+      return db;
+    } finally {
+      _initPromise = null;
+    }
+  })();
+
+  return _initPromise;
 }
 
 async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
@@ -49,6 +61,28 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
       updated_at           TEXT NOT NULL
     );
   `);
+
+  // Ensure all extended columns exist on existing databases (self-healing migration)
+  const requiredColumns: Array<{ name: string; definition: string }> = [
+    { name: 'task_type', definition: "TEXT NOT NULL DEFAULT 'unallocated'" },
+    { name: 'time_input_mode', definition: 'TEXT' },
+    { name: 'allocated_start_time', definition: 'TEXT' },
+    { name: 'allocated_end_time', definition: 'TEXT' },
+    { name: 'block_multiplier', definition: 'INTEGER' },
+    { name: 'duration_minutes', definition: 'INTEGER' },
+  ];
+
+  for (const col of requiredColumns) {
+    try {
+      await db.execAsync(`ALTER TABLE tracks ADD COLUMN ${col.name} ${col.definition};`);
+    } catch (err: any) {
+      const msg = String(err?.message || err);
+      // If column is already present, SQLite throws duplicate column name — safely ignore
+      if (!msg.toLowerCase().includes('duplicate column')) {
+        console.warn(`[db] Migration note for ${col.name}:`, err);
+      }
+    }
+  }
 
   // ── tags table ─────────────────────────────────────────────────────────────
   await db.execAsync(`
@@ -215,3 +249,90 @@ async function runMigrations(
     }
   }
 }
+
+/**
+ * Format bytes into human-readable string (KB, MB, etc.)
+ */
+export function formatBytes(bytes: number): string {
+  if (!bytes || bytes <= 0) return '0 KB';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+/**
+ * Return database storage metrics (task count and database size in bytes).
+ */
+export async function getStorageStats(): Promise<{ taskCount: number; dbSizeBytes: number }> {
+  try {
+    const db = await getDatabase();
+    let taskCount = 0;
+    let pageCount = 0;
+    let pageSize = 4096;
+
+    try {
+      const countRow = await db.getFirstAsync<{ count: number }>(
+        'SELECT COUNT(*) as count FROM tracks;'
+      );
+      taskCount = countRow?.count ?? 0;
+    } catch (err) {
+      console.warn('[db] getStorageStats count error:', err);
+    }
+
+    try {
+      const pageCountRow = await db.getFirstAsync<any>('PRAGMA page_count;');
+      if (pageCountRow) {
+        pageCount = (Object.values(pageCountRow)[0] as number) || 0;
+      }
+    } catch (err) {
+      console.warn('[db] getStorageStats page_count error:', err);
+    }
+
+    try {
+      const pageSizeRow = await db.getFirstAsync<any>('PRAGMA page_size;');
+      if (pageSizeRow) {
+        pageSize = (Object.values(pageSizeRow)[0] as number) || 4096;
+      }
+    } catch (err) {
+      console.warn('[db] getStorageStats page_size error:', err);
+    }
+
+    const dbSizeBytes = pageCount * pageSize;
+    return { taskCount, dbSizeBytes };
+  } catch (e) {
+    console.warn('[db] getStorageStats general error:', e);
+    return { taskCount: 0, dbSizeBytes: 0 };
+  }
+}
+
+/**
+ * Delete the SQLite database file and clear the cached connection.
+ * Used primarily during a full factory reset to avoid NullPointerException
+ * when the app attempts to use a stale DB instance.
+ */
+export async function resetDatabase(): Promise<void> {
+  const currentDb = _db;
+  _db = null;
+
+  _initPromise = (async () => {
+    if (currentDb) {
+      try {
+        await currentDb.closeAsync();
+      } catch (e) {
+        console.warn('[db] error closing DB before reset:', e);
+      }
+    }
+    try {
+      await SQLite.deleteDatabaseAsync('time_tracker.db');
+    } catch (e) {
+      console.warn('[db] error deleting DB file:', e);
+    }
+    const freshDb = await SQLite.openDatabaseAsync('time_tracker.db');
+    await initDatabase(freshDb);
+    _db = freshDb;
+    return freshDb;
+  })();
+
+  await _initPromise;
+}
+
