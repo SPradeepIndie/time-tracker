@@ -53,7 +53,7 @@ export const backendToFrontend = (tracker: BackendTracker): Track => {
   const { title, description, status, priority, tags } = parseTaskMetadata(tracker.task);
   
   return {
-    id: tracker.id,
+    id: String(tracker.id),
     title,
     description,
     status,
@@ -63,6 +63,7 @@ export const backendToFrontend = (tracker: BackendTracker): Track => {
     createdAt: new Date(tracker.created_at),
     updatedAt: new Date(tracker.updated_at),
     tags,
+    taskType: 'unallocated' as const,
   };
 };
 

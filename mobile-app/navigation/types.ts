@@ -12,12 +12,34 @@ export type RootStackParamList = {
 };
 
 export type MainTabParamList = {
-  Home: undefined;
+  Tasks: undefined;
+  Goals: undefined;
+  Routines: undefined;
+  Analytics: undefined;
   Settings: undefined;
 };
 
-export type HomeScreenNavigationProp = CompositeNavigationProp<
-  BottomTabNavigationProp<MainTabParamList, 'Home'>,
+// ── Composite nav prop types ────────────────────────────────────────────────
+
+export type TasksScreenNavigationProp = CompositeNavigationProp<
+  BottomTabNavigationProp<MainTabParamList, 'Tasks'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
+
+export type HomeScreenNavigationProp = TasksScreenNavigationProp; // backward compat alias
+
+export type GoalsScreenNavigationProp = CompositeNavigationProp<
+  BottomTabNavigationProp<MainTabParamList, 'Goals'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
+
+export type RoutinesScreenNavigationProp = CompositeNavigationProp<
+  BottomTabNavigationProp<MainTabParamList, 'Routines'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
+
+export type AnalyticsScreenNavigationProp = CompositeNavigationProp<
+  BottomTabNavigationProp<MainTabParamList, 'Analytics'>,
   NativeStackNavigationProp<RootStackParamList>
 >;
 
