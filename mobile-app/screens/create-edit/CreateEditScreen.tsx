@@ -19,6 +19,8 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { CreateEditScreenNavigationProp, CreateEditScreenRouteProp } from '../../navigation/types';
 import { useTrackContext } from '../../context/TrackContext';
@@ -251,8 +253,12 @@ export default function CreateEditScreen({ navigation, route }: Props) {
   const s = makeStyles(colors);
 
   return (
-    <SafeAreaView edges={['bottom']}>
-      <ScrollView style={s.container} contentContainerStyle={{ paddingBottom: 50 }} keyboardShouldPersistTaps="handled">
+    <SafeAreaView edges={['bottom']} style={{ flex: 1 }}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView style={s.container} contentContainerStyle={{ paddingBottom: 150 }} keyboardShouldPersistTaps="handled">
         <Text style={s.screenTitle}>{isEdit ? 'Edit Task' : 'New Task'}</Text>
 
         {/* ── Title ──────────────────────────────────────────────── */}
@@ -545,7 +551,8 @@ export default function CreateEditScreen({ navigation, route }: Props) {
         <TouchableOpacity style={s.saveBtn} onPress={handleSave}>
           <Text style={s.saveBtnText}>{isEdit ? 'Save Changes' : 'Create Task'}</Text>
         </TouchableOpacity>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
