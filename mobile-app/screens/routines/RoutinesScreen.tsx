@@ -7,6 +7,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, Modal, Switch, ActivityIndicator,
+  KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard,
 } from 'react-native';
 import { SafeAreaView } from '../../components/layout/SafeAreaView';
 import { useTheme } from '../../context/ThemeContext';
@@ -250,50 +251,64 @@ export default function RoutinesScreen({ navigation }: Props) {
         )}
 
         {/* Create Routine Modal */}
-        <Modal visible={createRoutineModal} transparent animationType="slide">
-          <View style={s.modalOverlay}>
+        <Modal visible={createRoutineModal} transparent animationType="fade">
+          <KeyboardAvoidingView
+            style={s.modalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+              <View style={s.modalBackdrop} />
+            </TouchableWithoutFeedback>
             <View style={[s.modalCard, { backgroundColor: colors.surface }]}>
-              <Text style={[s.modalTitle, { color: colors.text }]}>New Routine</Text>
-              <TextInput
-                style={[s.modalInput, { borderColor: colors.border, color: colors.text }]}
-                placeholder="Routine name (e.g., Morning Routine)"
-                placeholderTextColor={colors.placeholder}
-                value={routineName}
-                onChangeText={setRoutineName}
-              />
-              <TextInput
-                style={[s.modalInput, { borderColor: colors.border, color: colors.text }]}
-                placeholder="Description (optional)"
-                placeholderTextColor={colors.placeholder}
-                value={routineDesc}
-                onChangeText={setRoutineDesc}
-              />
-              <Text style={[s.modalLabel, { color: colors.textSecondary }]}>Color</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-                {ROUTINE_COLORS.map((c) => (
-                  <TouchableOpacity key={c} onPress={() => setRoutineColor(c)}
-                    style={[s.colorSwatch, { backgroundColor: c, borderWidth: routineColor === c ? 3 : 0, borderColor: colors.text }]}
-                  />
-                ))}
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <Text style={[s.modalTitle, { color: colors.text }]}>New Routine</Text>
+                <TextInput
+                  style={[s.modalInput, { borderColor: colors.border, color: colors.text }]}
+                  placeholder="Routine name (e.g., Morning Routine)"
+                  placeholderTextColor={colors.placeholder}
+                  value={routineName}
+                  onChangeText={setRoutineName}
+                />
+                <TextInput
+                  style={[s.modalInput, { borderColor: colors.border, color: colors.text }]}
+                  placeholder="Description (optional)"
+                  placeholderTextColor={colors.placeholder}
+                  value={routineDesc}
+                  onChangeText={setRoutineDesc}
+                />
+                <Text style={[s.modalLabel, { color: colors.textSecondary }]}>Color</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                  {ROUTINE_COLORS.map((c) => (
+                    <TouchableOpacity key={c} onPress={() => setRoutineColor(c)}
+                      style={[s.colorSwatch, { backgroundColor: c, borderWidth: routineColor === c ? 3 : 0, borderColor: colors.text }]}
+                    />
+                  ))}
+                </ScrollView>
+                <View style={s.modalActions}>
+                  <TouchableOpacity onPress={() => setCreateRoutineModal(false)}>
+                    <Text style={[s.modalCancel, { color: colors.textSecondary }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[s.modalConfirm, { backgroundColor: colors.primary }]}
+                    onPress={handleCreateRoutine}
+                  >
+                    <Text style={s.modalConfirmText}>Create</Text>
+                  </TouchableOpacity>
+                </View>
               </ScrollView>
-              <View style={s.modalActions}>
-                <TouchableOpacity onPress={() => setCreateRoutineModal(false)}>
-                  <Text style={[s.modalCancel, { color: colors.textSecondary }]}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.modalConfirm, { backgroundColor: colors.primary }]}
-                  onPress={handleCreateRoutine}
-                >
-                  <Text style={s.modalConfirmText}>Create</Text>
-                </TouchableOpacity>
-              </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
 
         {/* Add Activity Modal */}
-        <Modal visible={addActivityModal} transparent animationType="slide">
-          <View style={s.modalOverlay}>
+        <Modal visible={addActivityModal} transparent animationType="fade">
+          <KeyboardAvoidingView
+            style={s.modalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+              <View style={s.modalBackdrop} />
+            </TouchableWithoutFeedback>
             <View style={[s.modalCard, { backgroundColor: colors.surface }]}>
               <Text style={[s.modalTitle, { color: colors.text }]}>Add Activity</Text>
               <TextInput
@@ -316,12 +331,18 @@ export default function RoutinesScreen({ navigation }: Props) {
                 </TouchableOpacity>
               </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
 
         {/* Add Reminder Modal */}
-        <Modal visible={reminderModal} transparent animationType="slide">
-          <View style={s.modalOverlay}>
+        <Modal visible={reminderModal} transparent animationType="fade">
+          <KeyboardAvoidingView
+            style={s.modalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+              <View style={s.modalBackdrop} />
+            </TouchableWithoutFeedback>
             <View style={[s.modalCard, { backgroundColor: colors.surface }]}>
               <Text style={[s.modalTitle, { color: colors.text }]}>Add Reminder</Text>
               <View style={s.timeRow}>
@@ -357,7 +378,7 @@ export default function RoutinesScreen({ navigation }: Props) {
                 </TouchableOpacity>
               </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
       </View>
     </SafeAreaView>
@@ -408,8 +429,23 @@ function makeStyles(colors: any) {
     emptyStateText: { fontSize: 20, fontWeight: '700', color: colors.text, marginBottom: 8 },
     emptyStateSubtext: { fontSize: 14, color: colors.textSecondary, textAlign: 'center' },
     emptyText: { fontSize: 13, color: colors.textSecondary, marginBottom: 8 },
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-    modalCard: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
+    modalOverlay: {
+      flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'center',
+      padding: 20,
+    },
+    modalBackdrop: {
+      ...StyleSheet.absoluteFill,
+    },
+    modalCard: {
+      borderRadius: 20,
+      padding: 20,
+      maxHeight: '85%',
+      elevation: 6,
+      shadowColor: '#000',
+      shadowOpacity: 0.2,
+      shadowRadius: 10,
+    },
     modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 16 },
     modalLabel: { fontSize: 13, fontWeight: '600', marginBottom: 6 },
     modalInput: {

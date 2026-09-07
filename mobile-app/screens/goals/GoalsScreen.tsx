@@ -7,6 +7,7 @@ import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, Modal, FlatList, ActivityIndicator,
+  KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard,
 } from 'react-native';
 import { SafeAreaView } from '../../components/layout/SafeAreaView';
 import { useTheme } from '../../context/ThemeContext';
@@ -233,7 +234,7 @@ export default function GoalsScreen({ navigation }: Props) {
         {isLoading ? (
           <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
         ) : (
-          <ScrollView contentContainerStyle={s.scrollContent}>
+          <ScrollView contentContainerStyle={[s.scrollContent, { paddingBottom: 150 }]} keyboardShouldPersistTaps="handled">
             {/* ── DAILY GOALS ────────────────────────────────────── */}
             {activeTab === 'daily' && (
               <View>
@@ -310,8 +311,14 @@ export default function GoalsScreen({ navigation }: Props) {
         )}
 
         {/* ── Add Weekly Goal Modal ────────────────────────────────── */}
-        <Modal visible={weeklyGoalModal} transparent animationType="slide">
-          <View style={s.modalOverlay}>
+        <Modal visible={weeklyGoalModal} transparent animationType="fade">
+          <KeyboardAvoidingView
+            style={s.modalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+              <View style={s.modalBackdrop} />
+            </TouchableWithoutFeedback>
             <View style={[s.modalCard, { backgroundColor: colors.surface }]}>
               <Text style={[s.modalTitle, { color: colors.text }]}>
                 {selectedParentId ? 'Add Sub-Goal' : 'Add Goal'}
@@ -336,65 +343,73 @@ export default function GoalsScreen({ navigation }: Props) {
                 </TouchableOpacity>
               </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
 
         {/* ── Category Management Modal ────────────────────────────── */}
-        <Modal visible={categoryModal} transparent animationType="slide">
-          <View style={s.modalOverlay}>
+        <Modal visible={categoryModal} transparent animationType="fade">
+          <KeyboardAvoidingView
+            style={s.modalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+              <View style={s.modalBackdrop} />
+            </TouchableWithoutFeedback>
             <View style={[s.modalCard, { backgroundColor: colors.surface }]}>
-              <Text style={[s.modalTitle, { color: colors.text }]}>Manage Categories</Text>
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <Text style={[s.modalTitle, { color: colors.text }]}>Manage Categories</Text>
 
-              {categories.map((cat) => (
-                <View key={cat.id} style={s.catRow}>
-                  <View style={[s.categoryDot, { backgroundColor: cat.color }]} />
-                  <Text style={[s.catRowName, { color: colors.text }]}>{cat.name}</Text>
-                  {cat.isDefault
-                    ? <Text style={[s.defaultBadge, { color: colors.textSecondary }]}>Default</Text>
-                    : <TouchableOpacity onPress={() => deleteCategory(cat.id)}>
-                        <Text style={{ color: colors.error }}>Delete</Text>
-                      </TouchableOpacity>
-                  }
-                </View>
-              ))}
-
-              <Text style={[s.addCatLabel, { color: colors.text }]}>Add New Category</Text>
-              <TextInput
-                style={[s.modalInput, { borderColor: colors.border, color: colors.text }]}
-                placeholder="Category name…"
-                placeholderTextColor={colors.placeholder}
-                value={newCatName}
-                onChangeText={setNewCatName}
-              />
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 8 }}>
-                {ROUTINE_COLORS.map((c) => (
-                  <TouchableOpacity key={c} onPress={() => setNewCatColor(c)}
-                    style={[s.colorSwatch, { backgroundColor: c, borderWidth: newCatColor === c ? 3 : 0, borderColor: colors.text }]}
-                  />
-                ))}
-              </ScrollView>
-
-              <View style={s.modalActions}>
-                <TouchableOpacity onPress={() => { setCategoryModal(false); setNewCatName(''); }}>
-                  <Text style={[s.modalCancel, { color: colors.textSecondary }]}>Close</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.modalConfirm, { backgroundColor: colors.primary }]}
-                  onPress={async () => {
-                    if (!newCatName.trim()) return;
-                    try {
-                      await addCategory(newCatName.trim(), newCatColor);
-                      setNewCatName('');
-                    } catch (e: any) {
-                      Alert.alert('Error', e.message);
+                {categories.map((cat) => (
+                  <View key={cat.id} style={s.catRow}>
+                    <View style={[s.categoryDot, { backgroundColor: cat.color }]} />
+                    <Text style={[s.catRowName, { color: colors.text }]}>{cat.name}</Text>
+                    {cat.isDefault
+                      ? <Text style={[s.defaultBadge, { color: colors.textSecondary }]}>Default</Text>
+                      : <TouchableOpacity onPress={() => deleteCategory(cat.id)}>
+                          <Text style={{ color: colors.error }}>Delete</Text>
+                        </TouchableOpacity>
                     }
-                  }}
-                >
-                  <Text style={s.modalConfirmText}>Add</Text>
-                </TouchableOpacity>
-              </View>
+                  </View>
+                ))}
+
+                <Text style={[s.addCatLabel, { color: colors.text }]}>Add New Category</Text>
+                <TextInput
+                  style={[s.modalInput, { borderColor: colors.border, color: colors.text }]}
+                  placeholder="Category name…"
+                  placeholderTextColor={colors.placeholder}
+                  value={newCatName}
+                  onChangeText={setNewCatName}
+                />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 8 }}>
+                  {ROUTINE_COLORS.map((c) => (
+                    <TouchableOpacity key={c} onPress={() => setNewCatColor(c)}
+                      style={[s.colorSwatch, { backgroundColor: c, borderWidth: newCatColor === c ? 3 : 0, borderColor: colors.text }]}
+                    />
+                  ))}
+                </ScrollView>
+
+                <View style={s.modalActions}>
+                  <TouchableOpacity onPress={() => { setCategoryModal(false); setNewCatName(''); }}>
+                    <Text style={[s.modalCancel, { color: colors.textSecondary }]}>Close</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[s.modalConfirm, { backgroundColor: colors.primary }]}
+                    onPress={async () => {
+                      if (!newCatName.trim()) return;
+                      try {
+                        await addCategory(newCatName.trim(), newCatColor);
+                        setNewCatName('');
+                      } catch (e: any) {
+                        Alert.alert('Error', e.message);
+                      }
+                    }}
+                  >
+                    <Text style={s.modalConfirmText}>Add</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
       </View>
     </SafeAreaView>
@@ -461,11 +476,20 @@ function makeStyles(colors: any) {
     addGoalBtnText: { fontSize: 14, fontWeight: '600' },
     modalOverlay: {
       flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
-      justifyContent: 'flex-end',
+      justifyContent: 'center',
+      padding: 20,
+    },
+    modalBackdrop: {
+      ...StyleSheet.absoluteFill,
     },
     modalCard: {
-      borderTopLeftRadius: 24, borderTopRightRadius: 24,
-      padding: 24, paddingBottom: 40,
+      borderRadius: 20,
+      padding: 20,
+      maxHeight: '85%',
+      elevation: 6,
+      shadowColor: '#000',
+      shadowOpacity: 0.2,
+      shadowRadius: 10,
     },
     modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 16 },
     modalInput: {
