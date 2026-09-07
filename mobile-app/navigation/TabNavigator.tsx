@@ -4,6 +4,9 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { MainTabParamList } from './types';
 import { useTheme } from '../context/ThemeContext';
 import HomeScreen from '../screens/home/HomeScreen';
+import GoalsScreen from '../screens/goals/GoalsScreen';
+import RoutinesScreen from '../screens/routines/RoutinesScreen';
+import AnalyticsScreen from '../screens/analytics/AnalyticsScreen';
 import SettingsScreen from '../screens/settings/SettingsScreen';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -19,28 +22,54 @@ export const TabNavigator: React.FC = () => {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
           borderTopWidth: 1,
+          paddingBottom: 4,
+          height: 60,
         },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textSecondary,
         tabBarLabelStyle: {
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: '600',
         },
       }}
     >
       <Tab.Screen
-        name="Home"
+        name="Tasks"
         component={HomeScreen}
         options={{
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 24 }}>🏠</Text>,
-          tabBarLabel: 'Home',
+          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20 }}>📝</Text>,
+          tabBarLabel: 'Tasks',
+        }}
+      />
+      <Tab.Screen
+        name="Goals"
+        component={GoalsScreen}
+        options={{
+          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20 }}>🎯</Text>,
+          tabBarLabel: 'Goals',
+        }}
+      />
+      <Tab.Screen
+        name="Routines"
+        component={RoutinesScreen}
+        options={{
+          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20 }}>🔄</Text>,
+          tabBarLabel: 'Routines',
+        }}
+      />
+      <Tab.Screen
+        name="Analytics"
+        component={AnalyticsScreen}
+        options={{
+          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20 }}>📊</Text>,
+          tabBarLabel: 'Analytics',
         }}
       />
       <Tab.Screen
         name="Settings"
         component={SettingsScreen}
         options={{
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 24 }}>⚙️</Text>,
+          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20 }}>⚙️</Text>,
           tabBarLabel: 'Settings',
         }}
       />

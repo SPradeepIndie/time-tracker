@@ -61,12 +61,12 @@ func (h *handler) sendErrorResponse(w http.ResponseWriter, statusCode int, error
 func (h *handler) validateCreateTrackerRequest(req *model.CreateTrackerRequest) []string {
 	var errors []string
 
-	if req.Task == "" {
-		errors = append(errors, "task is required and cannot be empty")
-	} else if len(strings.TrimSpace(req.Task)) == 0 {
-		errors = append(errors, "task cannot contain only whitespace")
-	} else if len(req.Task) > 500 {
-		errors = append(errors, "task cannot exceed 500 characters")
+	if req.Title == "" {
+		errors = append(errors, "title is required and cannot be empty")
+	} else if len(strings.TrimSpace(req.Title)) == 0 {
+		errors = append(errors, "title cannot contain only whitespace")
+	} else if len(req.Title) > 500 {
+		errors = append(errors, "title cannot exceed 500 characters")
 	}
 
 	if req.StartTime.IsZero() {
@@ -83,18 +83,18 @@ func (h *handler) validateCreateTrackerRequest(req *model.CreateTrackerRequest) 
 func (h *handler) validateUpdateTrackerRequest(req *model.UpdateTrackerRequest) []string {
 	var errors []string
 
-	if req.Task == nil && req.StartTime == nil && req.EndTime == nil {
-		errors = append(errors, "at least one field (task, start_time, or end_time) must be provided for update")
+	if req.Title == nil && req.StartTime == nil && req.EndTime == nil {
+		errors = append(errors, "at least one field (title, start_time, or end_time) must be provided for update")
 		return errors
 	}
 
-	if req.Task != nil {
-		if *req.Task == "" {
-			errors = append(errors, "task cannot be empty")
-		} else if len(strings.TrimSpace(*req.Task)) == 0 {
-			errors = append(errors, "task cannot contain only whitespace")
-		} else if len(*req.Task) > 500 {
-			errors = append(errors, "task cannot exceed 500 characters")
+	if req.Title != nil {
+		if *req.Title == "" {
+			errors = append(errors, "title cannot be empty")
+		} else if len(strings.TrimSpace(*req.Title)) == 0 {
+			errors = append(errors, "title cannot contain only whitespace")
+		} else if len(*req.Title) > 500 {
+			errors = append(errors, "title cannot exceed 500 characters")
 		}
 	}
 
@@ -185,7 +185,7 @@ func (h *handler) CreateTrackerHandler(w http.ResponseWriter, req *http.Request)
 		return
 	}
 
-	h.logger.Debugf("CreateTrackerHandler: Creating tracker with task: %s", request.Task)
+	h.logger.Debugf("CreateTrackerHandler: Creating tracker with title: %s", request.Title)
 	tracker, err := h.service.CreateTrackerService(request)
 	if err != nil {
 		h.logger.Errorf("CreateTrackerHandler: Service error - %v", err)

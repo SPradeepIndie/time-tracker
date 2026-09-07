@@ -20,21 +20,47 @@ const DB_KEY_ALIAS = 'time_tracker_db_key';
 
 // ─── Pure-JS helpers (no Buffer, no crypto global) ───────────────────────────
 
+const base64chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
 function uint8ToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
+  let result = '';
+  let i;
+  const l = bytes.length;
+  for (i = 2; i < l; i += 3) {
+    result += base64chars[bytes[i - 2] >> 2];
+    result += base64chars[((bytes[i - 2] & 0x03) << 4) | (bytes[i - 1] >> 4)];
+    result += base64chars[((bytes[i - 1] & 0x0f) << 2) | (bytes[i] >> 6)];
+    result += base64chars[bytes[i] & 0x3f];
   }
-  return btoa(binary);
+  if (i === l + 1) { // 1 byte remaining
+    result += base64chars[bytes[i - 2] >> 2];
+    result += base64chars[(bytes[i - 2] & 0x03) << 4];
+    result += '==';
+  }
+  if (i === l) { // 2 bytes remaining
+    result += base64chars[bytes[i - 2] >> 2];
+    result += base64chars[((bytes[i - 2] & 0x03) << 4) | (bytes[i - 1] >> 4)];
+    result += base64chars[(bytes[i - 1] & 0x0f) << 2];
+    result += '=';
+  }
+  return result;
 }
 
 function base64ToUint8(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const out = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    out[i] = binary.charCodeAt(i);
+  // Remove padding and invalid chars
+  const str = base64.replace(/=+$/, '').replace(/[^A-Za-z0-9+/]/g, '');
+  const out = new Uint8Array((str.length * 3) / 4);
+  let j = 0;
+  for (let i = 0; i < str.length; i += 4) {
+    const c1 = base64chars.indexOf(str[i]);
+    const c2 = base64chars.indexOf(str[i + 1]);
+    const c3 = base64chars.indexOf(str[i + 2]);
+    const c4 = base64chars.indexOf(str[i + 3]);
+    out[j++] = (c1 << 2) | (c2 >> 4);
+    if (c3 !== -1) out[j++] = ((c2 & 15) << 4) | (c3 >> 2);
+    if (c4 !== -1) out[j++] = ((c3 & 3) << 6) | c4;
   }
-  return out;
+  return out.slice(0, j);
 }
 
 /** UTF-8 string → Uint8Array (no TextEncoder needed) */
