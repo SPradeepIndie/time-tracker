@@ -1,7 +1,7 @@
 /**
  * notificationService.ts
  *
- * Centralized notification scheduling for all modules.
+ * Centralized notification scheduling for all modules with graceful Expo Go fallback.
  *
  * Schedules implemented:
  *  A. Unallocated task review — 3× per day with 5h gap (8AM–11PM window)
@@ -13,20 +13,51 @@
  *  G. Routine reminders — custom reminder matrix per routine
  */
 
-import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
+import type * as NotificationsType from 'expo-notifications';
+
+// Detect whether the app is executing inside the standard Expo Go client
+export const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+export const isAndroidExpoGo = Platform.OS === 'android' && isExpoGo;
+
+/**
+ * Lazily resolve expo-notifications module.
+ *
+ * In SDK 53+, Expo Go on Android removed native push notification support.
+ * A static `import ... from 'expo-notifications'` executes DevicePushTokenAutoRegistration.fx
+ * on app startup, throwing a fatal error. Lazily requiring avoids triggering that side effect.
+ */
+function getNotifications(): typeof NotificationsType | null {
+  if (isAndroidExpoGo) {
+    return null;
+  }
+  try {
+    return require('expo-notifications');
+  } catch (err) {
+    console.warn('[NotificationService] expo-notifications unavailable:', err);
+    return null;
+  }
+}
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+const initialNotifications = getNotifications();
+if (initialNotifications) {
+  try {
+    initialNotifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+  } catch (err) {
+    console.warn('[NotificationService] setNotificationHandler error:', err);
+  }
+}
 
 // ── Notification identifiers (for cancel/replace) ─────────────────────────────
 
@@ -46,11 +77,19 @@ const NOTIF_IDS = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function requestNotificationPermissions(): Promise<boolean> {
-  const existingResult = await Notifications.getPermissionsAsync();
-  // PermissionResponse.status is 'granted' | 'denied' | 'undetermined'
-  if ((existingResult as any).status === 'granted') return true;
-  const result = await Notifications.requestPermissionsAsync();
-  return (result as any).status === 'granted';
+  const Notifications = getNotifications();
+  if (!Notifications) {
+    return false;
+  }
+  try {
+    const existingResult = await Notifications.getPermissionsAsync();
+    if ((existingResult as any).status === 'granted') return true;
+    const result = await Notifications.requestPermissionsAsync();
+    return (result as any).status === 'granted';
+  } catch (error) {
+    console.warn('[NotificationService] Permissions request failed:', error);
+    return false;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -65,36 +104,50 @@ const UNALLOCATED_REVIEW_TIMES = [
 ];
 
 export async function scheduleUnallocatedTaskReviews(unallocatedCount: number): Promise<void> {
-  if (unallocatedCount === 0) {
-    await cancelUnallocatedTaskReviews();
-    return;
-  }
-  for (let i = 0; i < UNALLOCATED_REVIEW_TIMES.length; i++) {
-    const { hour, minute } = UNALLOCATED_REVIEW_TIMES[i];
-    await Notifications.cancelScheduledNotificationAsync(
-      `${NOTIF_IDS.UNALLOCATED_REVIEW_PREFIX}${i}`
-    ).catch(() => {});
-    await Notifications.scheduleNotificationAsync({
-      identifier: `${NOTIF_IDS.UNALLOCATED_REVIEW_PREFIX}${i}`,
-      content: {
-        title: '📋 Pending Tasks',
-        body: `You have ${unallocatedCount} unscheduled task${unallocatedCount > 1 ? 's' : ''} awaiting your attention.`,
-        data: { type: 'unallocated-review' },
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DAILY,
-        hour,
-        minute,
-      },
-    });
+  const Notifications = getNotifications();
+  if (!Notifications) return;
+
+  try {
+    if (unallocatedCount === 0) {
+      await cancelUnallocatedTaskReviews();
+      return;
+    }
+    for (let i = 0; i < UNALLOCATED_REVIEW_TIMES.length; i++) {
+      const { hour, minute } = UNALLOCATED_REVIEW_TIMES[i];
+      await Notifications.cancelScheduledNotificationAsync(
+        `${NOTIF_IDS.UNALLOCATED_REVIEW_PREFIX}${i}`
+      ).catch(() => {});
+      await Notifications.scheduleNotificationAsync({
+        identifier: `${NOTIF_IDS.UNALLOCATED_REVIEW_PREFIX}${i}`,
+        content: {
+          title: '📋 Pending Tasks',
+          body: `You have ${unallocatedCount} unscheduled task${unallocatedCount > 1 ? 's' : ''} awaiting your attention.`,
+          data: { type: 'unallocated-review' },
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DAILY,
+          hour,
+          minute,
+        },
+      });
+    }
+  } catch (error) {
+    console.warn('[NotificationService] scheduleUnallocatedTaskReviews error:', error);
   }
 }
 
 export async function cancelUnallocatedTaskReviews(): Promise<void> {
-  for (let i = 0; i < UNALLOCATED_REVIEW_TIMES.length; i++) {
-    await Notifications.cancelScheduledNotificationAsync(
-      `${NOTIF_IDS.UNALLOCATED_REVIEW_PREFIX}${i}`
-    ).catch(() => {});
+  const Notifications = getNotifications();
+  if (!Notifications) return;
+
+  try {
+    for (let i = 0; i < UNALLOCATED_REVIEW_TIMES.length; i++) {
+      await Notifications.cancelScheduledNotificationAsync(
+        `${NOTIF_IDS.UNALLOCATED_REVIEW_PREFIX}${i}`
+      ).catch(() => {});
+    }
+  } catch (error) {
+    console.warn('[NotificationService] cancelUnallocatedTaskReviews error:', error);
   }
 }
 
@@ -103,25 +156,39 @@ export async function cancelUnallocatedTaskReviews(): Promise<void> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function scheduleInProgressReminder(taskId: string, taskTitle: string): Promise<void> {
-  await Notifications.scheduleNotificationAsync({
-    identifier: `${NOTIF_IDS.IN_PROGRESS_PREFIX}${taskId}`,
-    content: {
-      title: '⏱ Task In Progress',
-      body: `"${taskTitle}" is still in progress. Keep going!`,
-      data: { type: 'in-progress-reminder', taskId },
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-      seconds: 45 * 60,
-      repeats: true,
-    },
-  });
+  const Notifications = getNotifications();
+  if (!Notifications) return;
+
+  try {
+    await Notifications.scheduleNotificationAsync({
+      identifier: `${NOTIF_IDS.IN_PROGRESS_PREFIX}${taskId}`,
+      content: {
+        title: '⏱ Task In Progress',
+        body: `"${taskTitle}" is still in progress. Keep going!`,
+        data: { type: 'in-progress-reminder', taskId },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: 45 * 60,
+        repeats: true,
+      },
+    });
+  } catch (error) {
+    console.warn('[NotificationService] scheduleInProgressReminder error:', error);
+  }
 }
 
 export async function cancelInProgressReminder(taskId: string): Promise<void> {
-  await Notifications.cancelScheduledNotificationAsync(
-    `${NOTIF_IDS.IN_PROGRESS_PREFIX}${taskId}`
-  ).catch(() => {});
+  const Notifications = getNotifications();
+  if (!Notifications) return;
+
+  try {
+    await Notifications.cancelScheduledNotificationAsync(
+      `${NOTIF_IDS.IN_PROGRESS_PREFIX}${taskId}`
+    ).catch(() => {});
+  } catch (error) {
+    console.warn('[NotificationService] cancelInProgressReminder error:', error);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -133,26 +200,40 @@ export async function scheduleTaskStartAlert(
   taskTitle: string,
   startTime: Date
 ): Promise<void> {
-  const secondsUntilStart = Math.max(1, Math.floor((startTime.getTime() - Date.now()) / 1000));
-  await Notifications.scheduleNotificationAsync({
-    identifier: `${NOTIF_IDS.TASK_START_PREFIX}${taskId}`,
-    content: {
-      title: '🚀 Task Started',
-      body: `"${taskTitle}" has now started. Good luck!`,
-      data: { type: 'task-start', taskId },
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-      seconds: secondsUntilStart,
-      repeats: false,
-    },
-  });
+  const Notifications = getNotifications();
+  if (!Notifications) return;
+
+  try {
+    const secondsUntilStart = Math.max(1, Math.floor((startTime.getTime() - Date.now()) / 1000));
+    await Notifications.scheduleNotificationAsync({
+      identifier: `${NOTIF_IDS.TASK_START_PREFIX}${taskId}`,
+      content: {
+        title: '🚀 Task Started',
+        body: `"${taskTitle}" has now started. Good luck!`,
+        data: { type: 'task-start', taskId },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: secondsUntilStart,
+        repeats: false,
+      },
+    });
+  } catch (error) {
+    console.warn('[NotificationService] scheduleTaskStartAlert error:', error);
+  }
 }
 
 export async function cancelTaskStartAlert(taskId: string): Promise<void> {
-  await Notifications.cancelScheduledNotificationAsync(
-    `${NOTIF_IDS.TASK_START_PREFIX}${taskId}`
-  ).catch(() => {});
+  const Notifications = getNotifications();
+  if (!Notifications) return;
+
+  try {
+    await Notifications.cancelScheduledNotificationAsync(
+      `${NOTIF_IDS.TASK_START_PREFIX}${taskId}`
+    ).catch(() => {});
+  } catch (error) {
+    console.warn('[NotificationService] cancelTaskStartAlert error:', error);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -164,26 +245,40 @@ export async function scheduleTaskExpiryAlert(
   taskTitle: string,
   endTime: Date
 ): Promise<void> {
-  const secondsUntilEnd = Math.max(1, Math.floor((endTime.getTime() - Date.now()) / 1000));
-  await Notifications.scheduleNotificationAsync({
-    identifier: `${NOTIF_IDS.TASK_EXPIRY_PREFIX}${taskId}`,
-    content: {
-      title: '✅ Task Time Completed',
-      body: `"${taskTitle}" duration window has ended. Please mark it complete!`,
-      data: { type: 'task-expiry', taskId },
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-      seconds: secondsUntilEnd,
-      repeats: false,
-    },
-  });
+  const Notifications = getNotifications();
+  if (!Notifications) return;
+
+  try {
+    const secondsUntilEnd = Math.max(1, Math.floor((endTime.getTime() - Date.now()) / 1000));
+    await Notifications.scheduleNotificationAsync({
+      identifier: `${NOTIF_IDS.TASK_EXPIRY_PREFIX}${taskId}`,
+      content: {
+        title: '✅ Task Time Completed',
+        body: `"${taskTitle}" duration window has ended. Please mark it complete!`,
+        data: { type: 'task-expiry', taskId },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: secondsUntilEnd,
+        repeats: false,
+      },
+    });
+  } catch (error) {
+    console.warn('[NotificationService] scheduleTaskExpiryAlert error:', error);
+  }
 }
 
 export async function cancelTaskExpiryAlert(taskId: string): Promise<void> {
-  await Notifications.cancelScheduledNotificationAsync(
-    `${NOTIF_IDS.TASK_EXPIRY_PREFIX}${taskId}`
-  ).catch(() => {});
+  const Notifications = getNotifications();
+  if (!Notifications) return;
+
+  try {
+    await Notifications.cancelScheduledNotificationAsync(
+      `${NOTIF_IDS.TASK_EXPIRY_PREFIX}${taskId}`
+    ).catch(() => {});
+  } catch (error) {
+    console.warn('[NotificationService] cancelTaskExpiryAlert error:', error);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -191,24 +286,38 @@ export async function cancelTaskExpiryAlert(taskId: string): Promise<void> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function scheduleDailyGoalPlanningReminder(hour: number, minute: number): Promise<void> {
-  await Notifications.cancelScheduledNotificationAsync(NOTIF_IDS.GOAL_PLAN_NIGHT).catch(() => {});
-  await Notifications.scheduleNotificationAsync({
-    identifier: NOTIF_IDS.GOAL_PLAN_NIGHT,
-    content: {
-      title: '🌙 Plan Tomorrow',
-      body: "Take a moment to set your goals for tomorrow. Tomorrow starts tonight!",
-      data: { type: 'goal-plan' },
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DAILY,
-      hour,
-      minute,
-    },
-  });
+  const Notifications = getNotifications();
+  if (!Notifications) return;
+
+  try {
+    await Notifications.cancelScheduledNotificationAsync(NOTIF_IDS.GOAL_PLAN_NIGHT).catch(() => {});
+    await Notifications.scheduleNotificationAsync({
+      identifier: NOTIF_IDS.GOAL_PLAN_NIGHT,
+      content: {
+        title: '🌙 Plan Tomorrow',
+        body: "Take a moment to set your goals for tomorrow. Tomorrow starts tonight!",
+        data: { type: 'goal-plan' },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DAILY,
+        hour,
+        minute,
+      },
+    });
+  } catch (error) {
+    console.warn('[NotificationService] scheduleDailyGoalPlanningReminder error:', error);
+  }
 }
 
 export async function cancelDailyGoalPlanningReminder(): Promise<void> {
-  await Notifications.cancelScheduledNotificationAsync(NOTIF_IDS.GOAL_PLAN_NIGHT).catch(() => {});
+  const Notifications = getNotifications();
+  if (!Notifications) return;
+
+  try {
+    await Notifications.cancelScheduledNotificationAsync(NOTIF_IDS.GOAL_PLAN_NIGHT).catch(() => {});
+  } catch (error) {
+    console.warn('[NotificationService] cancelDailyGoalPlanningReminder error:', error);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -216,37 +325,44 @@ export async function cancelDailyGoalPlanningReminder(): Promise<void> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function scheduleDailyGoalVerifications(): Promise<void> {
-  // 9:00 AM
-  await Notifications.cancelScheduledNotificationAsync(NOTIF_IDS.GOAL_VERIFY_9AM).catch(() => {});
-  await Notifications.scheduleNotificationAsync({
-    identifier: NOTIF_IDS.GOAL_VERIFY_9AM,
-    content: {
-      title: '🎯 Morning Goal Check',
-      body: "Good morning! Review your goals for today and make a plan.",
-      data: { type: 'goal-verify' },
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DAILY,
-      hour: 9,
-      minute: 0,
-    },
-  });
+  const Notifications = getNotifications();
+  if (!Notifications) return;
 
-  // 4:00 PM
-  await Notifications.cancelScheduledNotificationAsync(NOTIF_IDS.GOAL_VERIFY_4PM).catch(() => {});
-  await Notifications.scheduleNotificationAsync({
-    identifier: NOTIF_IDS.GOAL_VERIFY_4PM,
-    content: {
-      title: '🎯 Afternoon Goal Check',
-      body: "Half the day's left! How are your goals coming along?",
-      data: { type: 'goal-verify' },
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DAILY,
-      hour: 16,
-      minute: 0,
-    },
-  });
+  try {
+    // 9:00 AM
+    await Notifications.cancelScheduledNotificationAsync(NOTIF_IDS.GOAL_VERIFY_9AM).catch(() => {});
+    await Notifications.scheduleNotificationAsync({
+      identifier: NOTIF_IDS.GOAL_VERIFY_9AM,
+      content: {
+        title: '🎯 Morning Goal Check',
+        body: "Good morning! Review your goals for today and make a plan.",
+        data: { type: 'goal-verify' },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DAILY,
+        hour: 9,
+        minute: 0,
+      },
+    });
+
+    // 4:00 PM
+    await Notifications.cancelScheduledNotificationAsync(NOTIF_IDS.GOAL_VERIFY_4PM).catch(() => {});
+    await Notifications.scheduleNotificationAsync({
+      identifier: NOTIF_IDS.GOAL_VERIFY_4PM,
+      content: {
+        title: '🎯 Afternoon Goal Check',
+        body: "Half the day's left! How are your goals coming along?",
+        data: { type: 'goal-verify' },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DAILY,
+        hour: 16,
+        minute: 0,
+      },
+    });
+  } catch (error) {
+    console.warn('[NotificationService] scheduleDailyGoalVerifications error:', error);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -259,28 +375,42 @@ export async function scheduleRoutineReminder(
   hour: number,
   minute: number
 ): Promise<void> {
-  await Notifications.cancelScheduledNotificationAsync(
-    `${NOTIF_IDS.ROUTINE_REMINDER_PREFIX}${reminderId}`
-  ).catch(() => {});
-  await Notifications.scheduleNotificationAsync({
-    identifier: `${NOTIF_IDS.ROUTINE_REMINDER_PREFIX}${reminderId}`,
-    content: {
-      title: `🔄 ${routineName}`,
-      body: `Time to check off your "${routineName}" routine!`,
-      data: { type: 'routine-reminder', reminderId },
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DAILY,
-      hour,
-      minute,
-    },
-  });
+  const Notifications = getNotifications();
+  if (!Notifications) return;
+
+  try {
+    await Notifications.cancelScheduledNotificationAsync(
+      `${NOTIF_IDS.ROUTINE_REMINDER_PREFIX}${reminderId}`
+    ).catch(() => {});
+    await Notifications.scheduleNotificationAsync({
+      identifier: `${NOTIF_IDS.ROUTINE_REMINDER_PREFIX}${reminderId}`,
+      content: {
+        title: `🔄 ${routineName}`,
+        body: `Time to check off your "${routineName}" routine!`,
+        data: { type: 'routine-reminder', reminderId },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DAILY,
+        hour,
+        minute,
+      },
+    });
+  } catch (error) {
+    console.warn('[NotificationService] scheduleRoutineReminder error:', error);
+  }
 }
 
 export async function cancelRoutineReminder(reminderId: string): Promise<void> {
-  await Notifications.cancelScheduledNotificationAsync(
-    `${NOTIF_IDS.ROUTINE_REMINDER_PREFIX}${reminderId}`
-  ).catch(() => {});
+  const Notifications = getNotifications();
+  if (!Notifications) return;
+
+  try {
+    await Notifications.cancelScheduledNotificationAsync(
+      `${NOTIF_IDS.ROUTINE_REMINDER_PREFIX}${reminderId}`
+    ).catch(() => {});
+  } catch (error) {
+    console.warn('[NotificationService] cancelRoutineReminder error:', error);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -288,9 +418,16 @@ export async function cancelRoutineReminder(reminderId: string): Promise<void> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function bootstrapSystemNotifications(): Promise<void> {
-  const granted = await requestNotificationPermissions();
-  if (!granted) return;
+  if (isAndroidExpoGo) {
+    return;
+  }
+  try {
+    const granted = await requestNotificationPermissions();
+    if (!granted) return;
 
-  // Always schedule standing system notifications
-  await scheduleDailyGoalVerifications();
+    // Always schedule standing system notifications
+    await scheduleDailyGoalVerifications();
+  } catch (error) {
+    console.warn('[NotificationService] bootstrapSystemNotifications error:', error);
+  }
 }

@@ -1,13 +1,13 @@
 /**
  * SettingsScreen.tsx
  *
- * Extended settings with:
- *  - Security: Change PIN, biometric toggle
- *  - Sync: Backend URL input, sync toggle with live validation
- *  - Appearance: Dark mode
- *  - About: App info
+ * Settings screen featuring:
+ *  - Storage: Tasks stored count & storage space used
+ *  - Sync: Sync toggle & manual sync trigger (URL input removed)
+ *  - Security: Change PIN & reset options
+ *  - About: App Information link (housing Dark Mode toggle)
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,6 @@ import {
   TouchableOpacity,
   ScrollView,
   Switch,
-  TextInput,
   Alert,
   ActivityIndicator,
 } from 'react-native';
@@ -26,9 +25,9 @@ import { SettingsScreenNavigationProp } from '../../navigation/types';
 import { SafeAreaView } from '../../components/layout/SafeAreaView';
 import { Header } from '../../components/layout/Header';
 import { Card } from '../../components/ui/Card';
-import { isRemoteUrl, syncDisabledReason, isInsecureUrl } from '../../utils/urlValidator';
 import SyncStatusBadge from '../../components/sync/SyncStatusBadge';
 import { useTrackContext } from '../../context/TrackContext';
+import { getStorageStats, formatBytes } from '../../services/storage/db';
 
 interface Props {
   navigation: SettingsScreenNavigationProp;
@@ -37,32 +36,39 @@ interface Props {
 const PIN_HASH_KEY = 'app_pin_hash';
 
 export default function SettingsScreen({ navigation }: Props) {
-  const { colors, isDark, toggleTheme } = useTheme();
+  const { colors } = useTheme();
   const {
     syncEnabled,
-    backendUrl,
     syncStatus,
     syncError,
     canEnableSync,
     disabledReason,
     setSyncEnabled,
-    setBackendUrl,
     triggerSync,
   } = useSyncContext();
 
-  const { clearAllData } = useTrackContext();
-  const [urlInput, setUrlInput] = useState(backendUrl);
+  const { tracks, clearAllData } = useTrackContext();
   const [syncToggling, setSyncToggling] = useState(false);
+  const [storageStats, setStorageStats] = useState<{ taskCount: number; dbSizeBytes: number }>({
+    taskCount: tracks.length,
+    dbSizeBytes: 0,
+  });
 
-  const urlIsRemote = isRemoteUrl(urlInput);
-  const urlIsInsecure = isInsecureUrl(urlInput);
-  const urlDisabledReason = syncDisabledReason(urlInput);
-
-  const handleUrlBlur = async () => {
-    if (urlInput !== backendUrl) {
-      await setBackendUrl(urlInput.trim());
-    }
-  };
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const stats = await getStorageStats();
+      if (mounted) {
+        setStorageStats({
+          taskCount: tracks.length || stats.taskCount,
+          dbSizeBytes: stats.dbSizeBytes,
+        });
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [tracks.length]);
 
   const handleSyncToggle = async (value: boolean) => {
     setSyncToggling(true);
@@ -101,7 +107,7 @@ export default function SettingsScreen({ navigation }: Props) {
           text: 'Clear All',
           style: 'destructive',
           onPress: async () => {
-            await clearAllData(false); // keep encryption key
+            await clearAllData(false);
             Alert.alert('Done', 'All tracks have been deleted.');
           },
         },
@@ -119,7 +125,6 @@ export default function SettingsScreen({ navigation }: Props) {
           text: 'Reset App',
           style: 'destructive',
           onPress: () => {
-            // Second confirmation for destructive action
             Alert.alert(
               'Last warning',
               'All data will be permanently erased. This cannot be recovered.',
@@ -129,9 +134,20 @@ export default function SettingsScreen({ navigation }: Props) {
                   text: 'Yes, Reset Everything',
                   style: 'destructive',
                   onPress: async () => {
-                    await clearAllData(true); // delete key too
-                    await SecureStore.deleteItemAsync(PIN_HASH_KEY);
-                    Alert.alert('Reset complete', 'Please restart the app to set up a new PIN.');
+                    try {
+                      await clearAllData(true);
+                      await SecureStore.deleteItemAsync(PIN_HASH_KEY);
+                      await SecureStore.deleteItemAsync('time_tracker_db_key');
+                      await SecureStore.deleteItemAsync('backend_url');
+                      await SecureStore.deleteItemAsync('sync_enabled');
+                      Alert.alert(
+                        'Factory Reset Complete',
+                        'All local tasks, encryption keys, sync settings, and security PIN have been successfully erased. The app has been restored to factory state.'
+                      );
+                    } catch (err: any) {
+                      console.error('[Settings] Factory reset failed:', err);
+                      Alert.alert('Reset Error', `Failed to complete reset: ${err?.message || 'Please try again.'}`);
+                    }
                   },
                 },
               ]
@@ -142,6 +158,8 @@ export default function SettingsScreen({ navigation }: Props) {
     );
   };
 
+
+
   const s = makeStyles(colors);
 
   return (
@@ -149,76 +167,34 @@ export default function SettingsScreen({ navigation }: Props) {
       <View style={s.container}>
         <Header title="Settings" right={<SyncStatusBadge />} />
 
-        <ScrollView style={s.content} contentContainerStyle={{ paddingBottom: 40 }}>
+        <ScrollView style={s.content} contentContainerStyle={{ paddingBottom: 50 }}>
 
-          {/* ── Data ──────────────────────────────────────────────── */}
-          <Text style={s.sectionTitle}>🗑️  Data</Text>
+          {/* ── Storage & Space ───────────────────────────────────────── */}
+          <Text style={s.sectionTitle}>💾  Task Storage</Text>
           <Card>
-            <TouchableOpacity style={s.row} onPress={handleClearTracks}>
+            <View style={s.row}>
               <View style={s.rowLeft}>
-                <Text style={[s.rowLabel, { color: colors.priorityHigh }]}>Clear All Tracks</Text>
-                <Text style={s.rowDesc}>Delete all tracks and tags from this device</Text>
+                <Text style={s.rowLabel}>Tasks Stored</Text>
+                <Text style={s.rowDesc}>Total local task records</Text>
               </View>
-              <Text style={s.chevron}>›</Text>
-            </TouchableOpacity>
-            <View style={s.divider} />
-            <TouchableOpacity style={[s.row, s.rowLast]} onPress={handleFactoryReset}>
-              <View style={s.rowLeft}>
-                <Text style={[s.rowLabel, { color: colors.priorityHigh }]}>Factory Reset</Text>
-                <Text style={s.rowDesc}>Erase all data, PIN, and encryption key</Text>
-              </View>
-              <Text style={s.chevron}>›</Text>
-            </TouchableOpacity>
-          </Card>
-
-          {/* ── Security ──────────────────────────────────────────── */}
-          <Text style={s.sectionTitle}>🔐  Security</Text>
-          <Card>
-            <TouchableOpacity style={s.row} onPress={handleChangePin}>
-              <View style={s.rowLeft}>
-                <Text style={s.rowLabel}>Change PIN</Text>
-                <Text style={s.rowDesc}>Reset your 4-digit app lock</Text>
-              </View>
-              <Text style={s.chevron}>›</Text>
-            </TouchableOpacity>
-          </Card>
-
-          {/* ── Sync ─────────────────────────────────────────────── */}
-          <Text style={s.sectionTitle}>🔄  Sync</Text>
-          <Card>
-            {/* URL input */}
-            <View style={[s.row, s.rowColumn]}>
-              <Text style={s.rowLabel}>Backend URL</Text>
-              <TextInput
-                style={[
-                  s.urlInput,
-                  { borderColor: urlIsRemote ? colors.primary : colors.border },
-                ]}
-                value={urlInput}
-                onChangeText={setUrlInput}
-                onBlur={handleUrlBlur}
-                placeholder="https://your-server.com"
-                placeholderTextColor={colors.textTertiary}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="url"
-              />
-              {urlInput.length > 0 && !urlIsRemote && (
-                <Text style={s.urlHint}>{urlDisabledReason}</Text>
-              )}
-              {urlIsInsecure && urlIsRemote && (
-                <Text style={[s.urlHint, { color: '#FF9800' }]}>
-                  ⚠ HTTP connection is not secure. Use HTTPS in production.
-                </Text>
-              )}
+              <Text style={s.statBadge}>{storageStats.taskCount} tasks</Text>
             </View>
-
             <View style={s.divider} />
-
-            {/* Sync toggle */}
             <View style={[s.row, s.rowLast]}>
               <View style={s.rowLeft}>
-                <Text style={[s.rowLabel, !canEnableSync && s.rowLabelDisabled]}>
+                <Text style={s.rowLabel}>Space Used</Text>
+                <Text style={s.rowDesc}>SQLite database storage footprint</Text>
+              </View>
+              <Text style={s.statBadge}>{formatBytes(storageStats.dbSizeBytes)}</Text>
+            </View>
+          </Card>
+
+          {/* ── Sync ─────────────────────────────────────────────────── */}
+          <Text style={s.sectionTitle}>🔄  Cloud Sync</Text>
+          <Card>
+            <View style={[s.row, !syncEnabled && s.rowLast]}>
+              <View style={s.rowLeft}>
+                <Text style={[s.rowLabel, !canEnableSync && !syncEnabled && s.rowLabelDisabled]}>
                   Sync with Backend
                 </Text>
                 <Text style={s.rowDesc}>
@@ -226,7 +202,7 @@ export default function SettingsScreen({ navigation }: Props) {
                     ? syncError
                       ? `Error: ${syncError}`
                       : 'Bidirectional sync is active'
-                    : (urlInput ? (disabledReason ?? 'Tap to enable sync') : 'Enter a backend URL above')}
+                    : (disabledReason ?? 'Toggle to enable background synchronization')}
                 </Text>
               </View>
               <View style={s.toggleContainer}>
@@ -236,7 +212,6 @@ export default function SettingsScreen({ navigation }: Props) {
                   <Switch
                     value={syncEnabled}
                     onValueChange={handleSyncToggle}
-                    disabled={!canEnableSync && !syncEnabled}
                     trackColor={{ false: colors.border, true: colors.primary }}
                     thumbColor={colors.surface}
                   />
@@ -244,7 +219,6 @@ export default function SettingsScreen({ navigation }: Props) {
               </View>
             </View>
 
-            {/* Manual sync button */}
             {syncEnabled && (
               <>
                 <View style={s.divider} />
@@ -261,31 +235,49 @@ export default function SettingsScreen({ navigation }: Props) {
             )}
           </Card>
 
-          {/* ── Appearance ───────────────────────────────────────── */}
-          <Text style={s.sectionTitle}>🌓  Appearance</Text>
+          {/* ── Security ──────────────────────────────────────────── */}
+          <Text style={s.sectionTitle}>🔐  Security</Text>
           <Card>
-            <View style={[s.row, s.rowLast]}>
+            <TouchableOpacity style={[s.row, s.rowLast]} onPress={handleChangePin}>
               <View style={s.rowLeft}>
-                <Text style={s.rowLabel}>Dark Mode</Text>
-                <Text style={s.rowDesc}>Toggle between light and dark theme</Text>
+                <Text style={s.rowLabel}>Change PIN</Text>
+                <Text style={s.rowDesc}>Reset your 4-digit app lock</Text>
               </View>
-              <Switch
-                value={isDark}
-                onValueChange={toggleTheme}
-                trackColor={{ false: colors.border, true: colors.primary }}
-                thumbColor={colors.surface}
-              />
-            </View>
+              <Text style={s.chevron}>›</Text>
+            </TouchableOpacity>
+          </Card>
+
+          {/* ── Data Management ───────────────────────────────────── */}
+          <Text style={s.sectionTitle}>🗑️  Data Management</Text>
+          <Card>
+            <TouchableOpacity style={s.row} onPress={handleClearTracks}>
+              <View style={s.rowLeft}>
+                <Text style={[s.rowLabel, { color: colors.priorityHigh }]}>Clear All Tasks</Text>
+                <Text style={s.rowDesc}>Delete all tasks and tags from this device</Text>
+              </View>
+              <Text style={s.chevron}>›</Text>
+            </TouchableOpacity>
+            <View style={s.divider} />
+            <TouchableOpacity style={[s.row, s.rowLast]} onPress={handleFactoryReset}>
+              <View style={s.rowLeft}>
+                <Text style={[s.rowLabel, { color: colors.priorityHigh }]}>Factory Reset</Text>
+                <Text style={s.rowDesc}>Erase all data, PIN, and encryption key</Text>
+              </View>
+              <Text style={s.chevron}>›</Text>
+            </TouchableOpacity>
           </Card>
 
           {/* ── About ────────────────────────────────────────────── */}
-          <Text style={s.sectionTitle}>ℹ️  About</Text>
+          <Text style={s.sectionTitle}>ℹ️  About & Appearance</Text>
           <Card>
             <TouchableOpacity
               style={[s.row, s.rowLast]}
               onPress={() => navigation.navigate('Info')}
             >
-              <Text style={[s.rowLabel, { color: colors.primary }]}>App Information</Text>
+              <View style={s.rowLeft}>
+                <Text style={[s.rowLabel, { color: colors.primary }]}>App Information & Theme</Text>
+                <Text style={s.rowDesc}>Version, guides, and Dark Mode appearance</Text>
+              </View>
               <Text style={s.chevron}>›</Text>
             </TouchableOpacity>
           </Card>
@@ -320,11 +312,6 @@ function makeStyles(colors: any) {
     rowLast: {
       borderBottomWidth: 0,
     },
-    rowColumn: {
-      flexDirection: 'column',
-      alignItems: 'flex-start',
-      gap: 8,
-    },
     rowLeft: { flex: 1 },
     rowLabel: {
       fontSize: 16,
@@ -339,22 +326,18 @@ function makeStyles(colors: any) {
       fontSize: 13,
       color: colors.textSecondary,
     },
+    statBadge: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors.primary,
+      backgroundColor: colors.primary + '18',
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 8,
+    },
     chevron: {
       fontSize: 20,
       color: colors.textTertiary,
-    },
-    urlInput: {
-      width: '100%',
-      borderWidth: 1,
-      borderRadius: 8,
-      padding: 10,
-      fontSize: 14,
-      color: colors.text,
-      backgroundColor: colors.background,
-    },
-    urlHint: {
-      fontSize: 12,
-      color: colors.priorityHigh,
     },
     divider: {
       height: 1,
