@@ -67,3 +67,6 @@ dist-ssr/
 # Generated native folders
 /mobile-app/ios
 /mobile-app/android
+
+#agents
+.agents/
