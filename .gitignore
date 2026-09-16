@@ -69,4 +69,5 @@ dist-ssr/
 /mobile-app/android
 
 #agents
+.agents
 .agents/
