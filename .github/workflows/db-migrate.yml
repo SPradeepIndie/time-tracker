@@ -1,0 +1,65 @@
+name: Database Migration Runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      db_ssl_mode:
+        description: 'Database SSL Mode (use "require" for Supabase/Neon/RDS)'
+        required: true
+        default: 'require'
+        type: choice
+        options:
+          - require
+          - verify-full
+          - disable
+      confirm_run:
+        description: 'Type YES to confirm running migrations'
+        required: true
+        default: 'YES'
+
+concurrency:
+  group: db-migration
+  cancel-in-progress: false
+
+jobs:
+  run-migrations:
+    name: Execute PostgreSQL Migrations
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Validate confirmation
+        if: ${{ github.event.inputs.confirm_run != 'YES' }}
+        run: |
+          echo "ERROR: Migration aborted. Confirmation was '${{ github.event.inputs.confirm_run }}', expected 'YES'."
+          exit 1
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: backend/go.sum
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run Database Migrations
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT || '5432' }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_SCHEMA_NAME: ${{ secrets.DB_SCHEMA_NAME || 'postgres' }}
+          DB_SSL_MODE: ${{ github.event.inputs.db_ssl_mode || secrets.DB_SSL_MODE || 'require' }}
+        run: |
+          if [ -z "$DB_HOST" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASSWORD" ]; then
+            echo "ERROR: Missing required database secrets (DB_HOST, DB_USER, DB_PASSWORD)."
+            echo "Please configure them under Repository Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          echo "Executing migrations against ${DB_HOST}:${DB_PORT}/${DB_SCHEMA_NAME} (sslmode=${DB_SSL_MODE})..."
+          go run ./migrate/cmd/main.go

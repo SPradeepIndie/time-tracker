@@ -15,7 +15,8 @@
         "backgroundColor": "#ffffff"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.mobileapp"
+      "package": "com.sanjayapradeep.timetracker",
+      "versionCode": 1
     },
     "web": {
       "favicon": "./assets/favicon.png"
