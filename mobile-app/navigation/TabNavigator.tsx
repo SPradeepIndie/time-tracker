@@ -4,6 +4,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MainTabParamList } from './types';
 import { useTheme } from '../context/ThemeContext';
+import { AppIcon } from '../components/ui/AppIcon';
 import HomeScreen from '../screens/home/HomeScreen';
 import GoalsScreen from '../screens/goals/GoalsScreen';
 import RoutinesScreen from '../screens/routines/RoutinesScreen';
@@ -44,7 +45,7 @@ export const TabNavigator: React.FC = () => {
         name="Tasks"
         component={HomeScreen}
         options={{
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20 }}>📝</Text>,
+          tabBarIcon: ({ color }) => <AppIcon name="checkbox-outline" size={20} color={color} />,
           tabBarLabel: 'Tasks',
         }}
       />
@@ -52,7 +53,7 @@ export const TabNavigator: React.FC = () => {
         name="Goals"
         component={GoalsScreen}
         options={{
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20 }}>🎯</Text>,
+          tabBarIcon: ({ color }) => <AppIcon name="flag-outline" size={20} color={color} />,
           tabBarLabel: 'Goals',
         }}
       />
@@ -60,7 +61,7 @@ export const TabNavigator: React.FC = () => {
         name="Routines"
         component={RoutinesScreen}
         options={{
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20 }}>🔄</Text>,
+          tabBarIcon: ({ color }) => <AppIcon name="repeat-outline" size={20} color={color} />,
           tabBarLabel: 'Routines',
         }}
       />
@@ -68,7 +69,7 @@ export const TabNavigator: React.FC = () => {
         name="Analytics"
         component={AnalyticsScreen}
         options={{
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20 }}>📊</Text>,
+          tabBarIcon: ({ color }) => <AppIcon name="bar-chart-outline" size={20} color={color} />,
           tabBarLabel: 'Analytics',
         }}
       />
@@ -76,7 +77,7 @@ export const TabNavigator: React.FC = () => {
         name="Settings"
         component={SettingsScreen}
         options={{
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20 }}>⚙️</Text>,
+          tabBarIcon: ({ color }) => <AppIcon name="settings-outline" size={20} color={color} />,
           tabBarLabel: 'Settings',
         }}
       />

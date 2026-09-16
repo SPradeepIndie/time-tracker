@@ -13,6 +13,7 @@ import { SafeAreaView } from '../../components/layout/SafeAreaView';
 import { useTheme } from '../../context/ThemeContext';
 import { AnalyticsScreenNavigationProp } from '../../navigation/types';
 import { getDatabase } from '../../services/storage/db';
+import { AppIcon } from '../../components/ui/AppIcon';
 import {
   calculateDailyAnalytics,
   calculateWeeklyAnalytics,
@@ -26,6 +27,8 @@ import { getWeekLabel } from '../../types/Goal';
 
 interface Props { navigation: AnalyticsScreenNavigationProp; }
 
+import { getAppTodayDateString, getAppWeekLabel } from '../../utils/dateUtils';
+
 export default function AnalyticsScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const [loading, setLoading] = useState(true);
@@ -33,8 +36,8 @@ export default function AnalyticsScreen({ navigation }: Props) {
   const [weekly, setWeekly] = useState<WeeklyAnalytics | null>(null);
   const [view, setView] = useState<'daily' | 'weekly'>('daily');
 
-  const today = new Date().toISOString().split('T')[0];
-  const weekLabel = getWeekLabel(new Date());
+  const today = getAppTodayDateString();
+  const weekLabel = getAppWeekLabel();
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -94,9 +97,13 @@ export default function AnalyticsScreen({ navigation }: Props) {
       <View style={s.container}>
         {/* Header */}
         <View style={s.header}>
-          <Text style={s.headerTitle}>📊 Analytics</Text>
-          <TouchableOpacity onPress={loadData} style={s.refreshBtn}>
-            <Text style={[s.refreshText, { color: colors.primary }]}>↻ Refresh</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <AppIcon name="bar-chart-outline" size={24} color={colors.primary} />
+            <Text style={s.headerTitle}>Analytics</Text>
+          </View>
+          <TouchableOpacity onPress={loadData} style={[s.refreshBtn, { flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+            <AppIcon name="refresh-outline" size={16} color={colors.primary} />
+            <Text style={[s.refreshText, { color: colors.primary }]}>Refresh</Text>
           </TouchableOpacity>
         </View>
 
@@ -130,7 +137,10 @@ export default function AnalyticsScreen({ navigation }: Props) {
 
               {/* T_prod — Productivity Time */}
               <View style={[s.metricCard, { backgroundColor: colors.card }]}>
-                <Text style={s.metricTitle}>⏱ Productivity Time · T_prod</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <AppIcon name="timer-outline" size={18} color={colors.primary} />
+                  <Text style={s.metricTitle}>Productivity Time · T_prod</Text>
+                </View>
                 <Text style={[s.metricBig, { color: colors.primary }]}>
                   {formatProductivityTime(daily.productivityMinutes)}
                 </Text>
@@ -199,7 +209,10 @@ export default function AnalyticsScreen({ navigation }: Props) {
 
               {/* Category Progression Matrix */}
               <View style={[s.metricCard, { backgroundColor: colors.card }]}>
-                <Text style={s.metricTitle}>🗂 Category Progression · P_category(c)</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <AppIcon name="folder-outline" size={18} color={colors.primary} />
+                  <Text style={s.metricTitle}>Category Progression · P_category(c)</Text>
+                </View>
                 <Text style={s.formulaText}>
                   P_category = (Completed Goals + Sub-goals) / (Total Goals + Sub-goals) × 100%
                 </Text>
@@ -221,7 +234,10 @@ export default function AnalyticsScreen({ navigation }: Props) {
 
               {/* Weekly averages summary */}
               <View style={[s.metricCard, { backgroundColor: colors.card }]}>
-                <Text style={s.metricTitle}>📊 Weekly Averages</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                  <AppIcon name="trending-up-outline" size={18} color={colors.primary} />
+                  <Text style={s.metricTitle}>Weekly Averages</Text>
+                </View>
                 {[
                   { label: 'Avg Task Rate', value: avg(weekly.dailyHistory.map(d => d.taskCompletionRate)), color: colors.primary },
                   { label: 'Avg Goal Rate', value: avg(weekly.dailyHistory.map(d => d.goalHitRate)), color: '#7C3AED' },

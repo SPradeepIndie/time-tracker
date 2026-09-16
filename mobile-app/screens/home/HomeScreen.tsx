@@ -25,6 +25,7 @@ import { SafeAreaView } from '../../components/layout/SafeAreaView';
 import { Header } from '../../components/layout/Header';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { AppIcon } from '../../components/ui/AppIcon';
 import { Track, TaskStatus } from '../../types/Track';
 
 interface Props {
@@ -50,13 +51,13 @@ function formatDisplayTime(d: Date | string | undefined): string {
 
 const STATUS_CONFIG: Record<
   TaskStatus,
-  { label: string; color: string; icon: string }
+  { label: string; color: string; icon: string; family?: 'ionicons' | 'feather' | 'material' }
 > = {
-  created: { label: 'Created', color: '#6B7280', icon: '⚪' },
-  'time-allocated': { label: 'Time Allocated', color: '#8B5CF6', icon: '🟣' },
-  pending: { label: 'Pending', color: '#F59E0B', icon: '🟡' },
-  'in-progress': { label: 'In Progress', color: '#3B82F6', icon: '🔵' },
-  completed: { label: 'Completed', color: '#10B981', icon: '🟢' },
+  created: { label: 'Created', color: '#6B7280', icon: 'ellipse-outline' },
+  'time-allocated': { label: 'Time Allocated', color: '#8B5CF6', icon: 'time-outline' },
+  pending: { label: 'Pending', color: '#F59E0B', icon: 'hourglass-outline' },
+  'in-progress': { label: 'In Progress', color: '#3B82F6', icon: 'play-circle-outline' },
+  completed: { label: 'Completed', color: '#10B981', icon: 'checkmark-circle-outline' },
 };
 
 export default function HomeScreen({ navigation }: Props) {
@@ -181,10 +182,10 @@ export default function HomeScreen({ navigation }: Props) {
           >
             {(
               [
-                { key: 'all', label: 'All Tasks', count: counts.all },
-                { key: 'allocated', label: '⚡ Scheduled', count: counts.allocated },
-                { key: 'unallocated', label: '📋 Unscheduled', count: counts.unallocated },
-                { key: 'completed', label: '✅ Completed', count: counts.completed },
+                { key: 'all', label: 'All Tasks', icon: 'layers-outline', count: counts.all },
+                { key: 'allocated', label: 'Scheduled', icon: 'time-outline', count: counts.allocated },
+                { key: 'unallocated', label: 'Unscheduled', icon: 'document-text-outline', count: counts.unallocated },
+                { key: 'completed', label: 'Completed', icon: 'checkmark-done-outline', count: counts.completed },
               ] as const
             ).map((tab) => {
               const active = activeFilter === tab.key;
@@ -194,6 +195,11 @@ export default function HomeScreen({ navigation }: Props) {
                   style={[s.filterChip, active && s.filterChipActive]}
                   onPress={() => setActiveFilter(tab.key)}
                 >
+                  <AppIcon
+                    name={tab.icon}
+                    size={14}
+                    color={active ? '#fff' : colors.textSecondary}
+                  />
                   <Text style={[s.filterChipText, active && s.filterChipTextActive]}>
                     {tab.label}
                   </Text>
@@ -236,9 +242,14 @@ export default function HomeScreen({ navigation }: Props) {
                       {item.title}
                     </Text>
                     <View style={s.badgeRow}>
-                      <View style={[s.priorityBadge, { backgroundColor: priorityColor + '20', borderColor: priorityColor }]}>
+                      <View style={[s.priorityBadge, { backgroundColor: priorityColor + '20', borderColor: priorityColor, flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+                        <AppIcon
+                          name={item.priority === 'high' ? 'alert-circle' : item.priority === 'medium' ? 'remove-circle' : 'checkmark-circle'}
+                          size={12}
+                          color={priorityColor}
+                        />
                         <Text style={[s.priorityText, { color: priorityColor }]}>
-                          {item.priority === 'high' ? '🔴 High' : item.priority === 'medium' ? '🟡 Med' : '🟢 Low'}
+                          {item.priority === 'high' ? 'High' : item.priority === 'medium' ? 'Med' : 'Low'}
                         </Text>
                       </View>
                     </View>
@@ -254,7 +265,7 @@ export default function HomeScreen({ navigation }: Props) {
                   {/* Allocated Time & Block Info (Module A) */}
                   {item.taskType === 'allocated' ? (
                     <View style={s.scheduleInfoBox}>
-                      <Text style={s.scheduleIcon}>⏰</Text>
+                      <AppIcon name="time-outline" size={18} color={colors.primary} />
                       <View style={{ flex: 1 }}>
                         <Text style={s.scheduleTime}>
                           {formatDisplayTime(item.allocatedStartTime)} – {formatDisplayTime(item.allocatedEndTime)}
@@ -263,13 +274,15 @@ export default function HomeScreen({ navigation }: Props) {
                           {item.blockMultiplier ? `${item.blockMultiplier} block${item.blockMultiplier > 1 ? 's' : ''}` : 'Scheduled'} · {item.durationMinutes || (item.blockMultiplier ? item.blockMultiplier * 45 : 45)} min
                         </Text>
                       </View>
-                      <View style={s.trackTypeBadge}>
-                        <Text style={s.trackTypeBadgeText}>⚡ Same-Day</Text>
+                      <View style={[s.trackTypeBadge, { flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+                        <AppIcon name="flash-outline" size={12} color={colors.primary} />
+                        <Text style={s.trackTypeBadgeText}>Same-Day</Text>
                       </View>
                     </View>
                   ) : (
-                    <View style={s.unscheduledInfoBox}>
-                      <Text style={s.unscheduledText}>📋 Unscheduled task</Text>
+                    <View style={[s.unscheduledInfoBox, { flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
+                      <AppIcon name="document-text-outline" size={14} color={colors.textSecondary} />
+                      <Text style={s.unscheduledText}>Unscheduled task</Text>
                     </View>
                   )}
 
@@ -291,11 +304,11 @@ export default function HomeScreen({ navigation }: Props) {
                       style={[s.statusDropdownBtn, { backgroundColor: statusInfo.color + '18', borderColor: statusInfo.color }]}
                       onPress={() => setSelectedTaskForStatus(item)}
                     >
-                      <Text style={s.statusIcon}>{statusInfo.icon}</Text>
+                      <AppIcon name={statusInfo.icon} size={15} color={statusInfo.color} />
                       <Text style={[s.statusDropdownText, { color: statusInfo.color }]}>
                         {statusInfo.label}
                       </Text>
-                      <Text style={[s.statusDropdownChevron, { color: statusInfo.color }]}>▾</Text>
+                      <AppIcon name="chevron-down" size={14} color={statusInfo.color} />
                     </TouchableOpacity>
 
                     {/* Actions */}
@@ -304,13 +317,13 @@ export default function HomeScreen({ navigation }: Props) {
                         style={s.iconActionBtn}
                         onPress={() => navigation.navigate('CreateEdit', { id: item.id })}
                       >
-                        <Text style={s.actionEmoji}>✏️</Text>
+                        <AppIcon name="create-outline" size={18} color={colors.textSecondary} />
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={s.iconActionBtn}
                         onPress={() => handleDelete(item.id, item.title)}
                       >
-                        <Text style={s.actionEmoji}>🗑️</Text>
+                        <AppIcon name="trash-outline" size={18} color={colors.error || '#EF4444'} />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -320,7 +333,7 @@ export default function HomeScreen({ navigation }: Props) {
           }}
           ListEmptyComponent={
             <View style={s.emptyContainer}>
-              <Text style={s.emptyEmoji}>📝</Text>
+              <AppIcon name="document-text-outline" size={48} color={colors.border} />
               <Text style={s.emptyTitle}>No tasks found</Text>
               <Text style={s.emptyText}>
                 {searchQuery
@@ -367,7 +380,7 @@ export default function HomeScreen({ navigation }: Props) {
                         ]}
                         onPress={() => handleSelectStatus(st)}
                       >
-                        <Text style={s.statusOptionIcon}>{cfg.icon}</Text>
+                        <AppIcon name={cfg.icon} size={18} color={cfg.color} />
                         <Text
                           style={[
                             s.statusOptionLabel,
@@ -376,7 +389,7 @@ export default function HomeScreen({ navigation }: Props) {
                         >
                           {cfg.label}
                         </Text>
-                        {isCurrent && <Text style={[s.currentCheck, { color: cfg.color }]}>✓</Text>}
+                        {isCurrent && <AppIcon name="checkmark" size={16} color={cfg.color} />}
                       </TouchableOpacity>
                     );
                   })}

@@ -13,6 +13,7 @@ import { SafeAreaView } from '../../components/layout/SafeAreaView';
 import { useTheme } from '../../context/ThemeContext';
 import { useGoalContext } from '../../context/GoalContext';
 import { GoalsScreenNavigationProp } from '../../navigation/types';
+import { AppIcon } from '../../components/ui/AppIcon';
 import { DailyGoal, WeeklyGoal, WeeklyGoalCategory, MAX_DAILY_GOALS, INITIAL_DAILY_GOAL_FIELDS, getTodayDateString, getTomorrowDateString } from '../../types/Goal';
 import { ROUTINE_COLORS } from '../../types/Routine';
 
@@ -106,11 +107,11 @@ export default function GoalsScreen({ navigation }: Props) {
         style={[s.checkbox, goal.isCompleted && s.checkboxDone]}
         onPress={() => toggleDailyGoal(goal.id, !goal.isCompleted)}
       >
-        {goal.isCompleted && <Text style={s.checkmark}>✓</Text>}
+        {goal.isCompleted && <AppIcon name="checkmark" size={14} color="#fff" />}
       </TouchableOpacity>
       <Text style={[s.goalText, goal.isCompleted && s.goalTextDone]}>{goal.text}</Text>
       <TouchableOpacity onPress={() => deleteDailyGoal(goal.id)} style={s.deleteBtn}>
-        <Text style={s.deleteBtnText}>✕</Text>
+        <AppIcon name="close-outline" size={16} color={colors.textTertiary || '#999'} />
       </TouchableOpacity>
     </View>
   );
@@ -130,14 +131,21 @@ export default function GoalsScreen({ navigation }: Props) {
             style={[s.checkbox, goal.isCompleted && s.checkboxDone]}
             onPress={() => toggleWeeklyGoal(goal.id, !goal.isCompleted)}
           >
-            {goal.isCompleted && <Text style={s.checkmark}>✓</Text>}
+            {goal.isCompleted && <AppIcon name="checkmark" size={14} color="#fff" />}
           </TouchableOpacity>
           <TouchableOpacity
-            style={{ flex: 1 }}
+            style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}
             onPress={() => hasChildren && toggleExpanded(goal.id)}
           >
+            {hasChildren && (
+              <AppIcon
+                name={isExpanded ? 'chevron-down' : 'chevron-forward'}
+                size={14}
+                color={colors.textSecondary}
+              />
+            )}
             <Text style={[s.goalText, goal.isCompleted && s.goalTextDone]}>
-              {hasChildren ? (isExpanded ? '▾ ' : '▸ ') : '  '}{goal.text}
+              {goal.text}
             </Text>
           </TouchableOpacity>
           {goal.tier < 3 && (
@@ -153,7 +161,7 @@ export default function GoalsScreen({ navigation }: Props) {
             </TouchableOpacity>
           )}
           <TouchableOpacity onPress={() => deleteWeeklyGoal(goal.id)} style={s.deleteBtn}>
-            <Text style={s.deleteBtnText}>✕</Text>
+            <AppIcon name="close-outline" size={16} color={colors.textTertiary || '#999'} />
           </TouchableOpacity>
         </View>
         {isExpanded && children.map((c) => renderWeeklyGoal(c, depth + 1))}
@@ -212,7 +220,10 @@ export default function GoalsScreen({ navigation }: Props) {
       <View style={s.container}>
         {/* Header */}
         <View style={s.header}>
-          <Text style={s.headerTitle}>🎯 Goals</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <AppIcon name="flag-outline" size={24} color={colors.primary} />
+            <Text style={s.headerTitle}>Goals</Text>
+          </View>
         </View>
 
         {/* Tab Switcher */}
@@ -241,7 +252,10 @@ export default function GoalsScreen({ navigation }: Props) {
                 {/* Today's goals */}
                 {todayGoals.length > 0 && (
                   <View style={s.section}>
-                    <Text style={s.sectionTitle}>📅 Today's Goals</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                      <AppIcon name="calendar-outline" size={16} color={colors.primary} />
+                      <Text style={s.sectionTitle}>Today's Goals</Text>
+                    </View>
                     {todayGoals.map(renderDailyGoalRow)}
                   </View>
                 )}
@@ -249,7 +263,10 @@ export default function GoalsScreen({ navigation }: Props) {
                 {/* Plan for tomorrow */}
                 <View style={s.section}>
                   <View style={s.sectionHeaderRow}>
-                    <Text style={s.sectionTitle}>🌙 Plan for Tomorrow</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <AppIcon name="moon-outline" size={16} color={colors.primary} />
+                      <Text style={s.sectionTitle}>Plan for Tomorrow</Text>
+                    </View>
                     <Text style={s.countLabel}>{tomorrowGoals.length}/{MAX_DAILY_GOALS}</Text>
                   </View>
 

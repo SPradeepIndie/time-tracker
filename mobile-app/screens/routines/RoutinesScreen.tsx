@@ -13,7 +13,10 @@ import { SafeAreaView } from '../../components/layout/SafeAreaView';
 import { useTheme } from '../../context/ThemeContext';
 import { useRoutineContext } from '../../context/RoutineContext';
 import { RoutinesScreenNavigationProp } from '../../navigation/types';
+import { AppIcon } from '../../components/ui/AppIcon';
 import { Routine, SubActivity, RoutineReminder, RoutineActivityLog, ROUTINE_COLORS } from '../../types/Routine';
+
+import { getAppTodayDateString } from '../../utils/dateUtils';
 
 interface Props { navigation: RoutinesScreenNavigationProp; }
 
@@ -27,7 +30,7 @@ export default function RoutinesScreen({ navigation }: Props) {
     getDailyLogs, toggleActivityLog,
   } = useRoutineContext();
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getAppTodayDateString();
 
   // Per-routine data (loaded on expand)
   const [subActivitiesMap, setSubActivitiesMap] = useState<Record<string, SubActivity[]>>({});
@@ -135,7 +138,11 @@ export default function RoutinesScreen({ navigation }: Props) {
           <Text style={s.progressText}>
             {acts.length > 0 ? `${checked}/${acts.length}` : 'No steps'}
           </Text>
-          <Text style={s.chevron}>{isExpanded ? '▲' : '▼'}</Text>
+          <AppIcon
+            name={isExpanded ? 'chevron-up' : 'chevron-down'}
+            size={16}
+            color={colors.textSecondary}
+          />
         </TouchableOpacity>
 
         {/* Progress bar */}
@@ -149,7 +156,10 @@ export default function RoutinesScreen({ navigation }: Props) {
         {isExpanded && (
           <View style={s.expandedContent}>
             {/* Sub-activities checklist */}
-            <Text style={s.subSectionTitle}>✅ Activities</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <AppIcon name="checkbox-outline" size={16} color={routine.color} />
+              <Text style={s.subSectionTitle}>Activities</Text>
+            </View>
             {acts.length === 0 && (
               <Text style={s.emptyText}>No activities yet. Add one below.</Text>
             )}
@@ -162,11 +172,11 @@ export default function RoutinesScreen({ navigation }: Props) {
                     style={[s.checkbox, isChecked && { backgroundColor: routine.color, borderColor: routine.color }]}
                     onPress={() => log && handleToggleLog(routine.id, log.id, isChecked)}
                   >
-                    {isChecked && <Text style={s.checkmark}>✓</Text>}
+                    {isChecked && <AppIcon name="checkmark" size={14} color="#fff" />}
                   </TouchableOpacity>
                   <Text style={[s.activityText, isChecked && s.activityDone]}>{act.text}</Text>
                   <TouchableOpacity onPress={() => handleDeleteActivity(routine.id, act.id)}>
-                    <Text style={s.deleteText}>✕</Text>
+                    <AppIcon name="close-outline" size={16} color={colors.textTertiary || '#999'} />
                   </TouchableOpacity>
                 </View>
               );
@@ -180,7 +190,10 @@ export default function RoutinesScreen({ navigation }: Props) {
             </TouchableOpacity>
 
             {/* Reminder Matrix */}
-            <Text style={[s.subSectionTitle, { marginTop: 16 }]}>⏰ Reminders</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 16, marginBottom: 8 }}>
+              <AppIcon name="time-outline" size={16} color={routine.color} />
+              <Text style={s.subSectionTitle}>Reminders</Text>
+            </View>
             {reminders.length === 0 && <Text style={s.emptyText}>No reminders set.</Text>}
             {reminders.map((rem) => (
               <View key={rem.id} style={s.reminderRow}>
@@ -194,7 +207,7 @@ export default function RoutinesScreen({ navigation }: Props) {
                   thumbColor={rem.isEnabled ? '#fff' : colors.textSecondary}
                 />
                 <TouchableOpacity onPress={() => deleteReminder(rem)}>
-                  <Text style={s.deleteText}>✕</Text>
+                  <AppIcon name="close-outline" size={16} color={colors.textTertiary || '#999'} />
                 </TouchableOpacity>
               </View>
             ))}
@@ -227,7 +240,10 @@ export default function RoutinesScreen({ navigation }: Props) {
       <View style={s.container}>
         {/* Header */}
         <View style={s.header}>
-          <Text style={s.headerTitle}>🔄 Routines</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <AppIcon name="repeat-outline" size={24} color={colors.primary} />
+            <Text style={s.headerTitle}>Routines</Text>
+          </View>
           <TouchableOpacity
             style={[s.createBtn, { backgroundColor: colors.primary }]}
             onPress={() => setCreateRoutineModal(true)}
@@ -240,7 +256,7 @@ export default function RoutinesScreen({ navigation }: Props) {
           <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
         ) : routines.length === 0 ? (
           <View style={s.emptyState}>
-            <Text style={s.emptyStateIcon}>🔄</Text>
+            <AppIcon name="repeat-outline" size={48} color={colors.border} />
             <Text style={s.emptyStateText}>No routines yet.</Text>
             <Text style={s.emptyStateSubtext}>Create one to start tracking your habits.</Text>
           </View>

@@ -337,20 +337,44 @@ export function formatBytes(bytes: number): string {
 }
 
 /**
- * Return database storage metrics (task count and database size in bytes).
+ * Storage breakdown details.
  */
-export async function getStorageStats(): Promise<{ taskCount: number; dbSizeBytes: number }> {
+export interface StorageDetailStats {
+  taskCount: number;
+  dailyGoalCount: number;
+  weeklyGoalCount: number;
+  routineCount: number;
+  routineLogCount: number;
+  dbSizeBytes: number;
+}
+
+/**
+ * Return database storage metrics (item counts and database size in bytes).
+ */
+export async function getStorageStats(): Promise<StorageDetailStats> {
   try {
     const db = await getDatabase();
     let taskCount = 0;
+    let dailyGoalCount = 0;
+    let weeklyGoalCount = 0;
+    let routineCount = 0;
+    let routineLogCount = 0;
     let pageCount = 0;
     let pageSize = 4096;
 
     try {
-      const countRow = await db.getFirstAsync<{ count: number }>(
-        'SELECT COUNT(*) as count FROM tracks;'
-      );
-      taskCount = countRow?.count ?? 0;
+      const [tRow, dgRow, wgRow, rRow, rlRow] = await Promise.all([
+        db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM tracks;'),
+        db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM daily_goals;'),
+        db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM weekly_goals;'),
+        db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM routines;'),
+        db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM routine_activity_logs;'),
+      ]);
+      taskCount = tRow?.count ?? 0;
+      dailyGoalCount = dgRow?.count ?? 0;
+      weeklyGoalCount = wgRow?.count ?? 0;
+      routineCount = rRow?.count ?? 0;
+      routineLogCount = rlRow?.count ?? 0;
     } catch (err) {
       console.warn('[db] getStorageStats count error:', err);
     }
@@ -374,10 +398,24 @@ export async function getStorageStats(): Promise<{ taskCount: number; dbSizeByte
     }
 
     const dbSizeBytes = pageCount * pageSize;
-    return { taskCount, dbSizeBytes };
+    return {
+      taskCount,
+      dailyGoalCount,
+      weeklyGoalCount,
+      routineCount,
+      routineLogCount,
+      dbSizeBytes,
+    };
   } catch (e) {
     console.warn('[db] getStorageStats general error:', e);
-    return { taskCount: 0, dbSizeBytes: 0 };
+    return {
+      taskCount: 0,
+      dailyGoalCount: 0,
+      weeklyGoalCount: 0,
+      routineCount: 0,
+      routineLogCount: 0,
+      dbSizeBytes: 0,
+    };
   }
 }
 

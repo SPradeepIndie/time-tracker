@@ -78,27 +78,28 @@ export const MAX_CHILDREN_PER_TIER = 5;
 export const MAX_TIERS = 3;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+import {
+  getAppWeekLabel,
+  getAppTodayDateString,
+  getAppTomorrowDateString,
+  getAppNextWeekLabel,
+} from '../utils/dateUtils';
 
 /** Returns ISO week label for a given date, e.g. "2026-W36" */
-export function getWeekLabel(date: Date): string {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
-  const week1 = new Date(d.getFullYear(), 0, 4);
-  const weekNumber = 1 + Math.round(
-    ((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7
-  );
-  return `${d.getFullYear()}-W${String(weekNumber).padStart(2, '0')}`;
+export function getWeekLabel(date: Date = new Date()): string {
+  return getAppWeekLabel(date);
 }
 
-/** Returns "tomorrow" date string (YYYY-MM-DD) for daily goal planning */
-export function getTomorrowDateString(): string {
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  return tomorrow.toISOString().split('T')[0];
+export function getNextWeekLabel(date: Date = new Date()): string {
+  return getAppNextWeekLabel(date);
 }
 
-/** Returns "today" date string (YYYY-MM-DD) */
-export function getTodayDateString(): string {
-  return new Date().toISOString().split('T')[0];
+/** Returns "tomorrow" date string (YYYY-MM-DD) adhering to 6:00 AM local transition */
+export function getTomorrowDateString(date: Date = new Date()): string {
+  return getAppTomorrowDateString(date);
+}
+
+/** Returns "today" date string (YYYY-MM-DD) adhering to 6:00 AM local transition */
+export function getTodayDateString(date: Date = new Date()): string {
+  return getAppTodayDateString(date);
 }
