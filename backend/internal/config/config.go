@@ -27,6 +27,7 @@ type Config struct {
 	Password   string `json:"password"`
 	SchemaName string `json:"schema_name"`
 	AppPort    string `json:"app_port"`
+	SslMode    string `json:"ssl_mode"`
 }
 
 var cfg *Config
@@ -67,6 +68,9 @@ func LoadConfig() (*Config, error) {
 				}
 			}
 		}
+	}
+	if c.SslMode == "" {
+		c.SslMode = "disable"
 	}
 	cfg = &c
 	return cfg, nil

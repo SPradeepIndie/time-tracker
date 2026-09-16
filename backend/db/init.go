@@ -34,6 +34,7 @@ func Init(logger *logger.Logger) *initDB {
 		User:     cfg.User,
 		Password: cfg.Password,
 		Dbname:   cfg.SchemaName,
+		SSLMode:  cfg.SslMode,
 	})
 
 	if err := pg.Connect(logger); err != nil {

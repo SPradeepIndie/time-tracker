@@ -20,6 +20,7 @@ type PostgresParam struct {
 	User     string
 	Password string
 	Dbname   string
+	SSLMode  string
 }
 
 func Postgres(param PostgresParam) *postgres {
@@ -76,6 +77,10 @@ func (i *postgres) Close(logger *logger.Logger) error {
 }
 
 func (i *postgres) createConnStr() string {
-	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
-		i.param.Host, i.param.Port, i.param.User, i.param.Password, i.param.Dbname)
+	sslMode := i.param.SSLMode
+	if sslMode == "" {
+		sslMode = "disable"
+	}
+	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		i.param.Host, i.param.Port, i.param.User, i.param.Password, i.param.Dbname, sslMode)
 }

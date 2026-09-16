@@ -1,0 +1,200 @@
+name: CD Orchestrator
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 1.0.0)'
+        required: true
+        default: '1.0.0'
+      version_code:
+        description: 'Android Version Code (integer, e.g. 1, 2, 3)'
+        required: true
+        default: '1'
+      release_title:
+        description: 'Release title'
+        required: false
+        default: ''
+      release_notes:
+        description: 'Release notes / changelog'
+        required: false
+        default: 'Automated release: Android standalone APK for direct installation + Play Store ready AAB bundle.'
+      run_db_migration:
+        description: 'Run Supabase DB migrations before release'
+        type: boolean
+        default: false
+      is_prerelease:
+        description: 'Mark this release as a pre-release'
+        type: boolean
+        default: false
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cd-release
+  cancel-in-progress: false
+
+jobs:
+  db-migration:
+    name: Run DB Migrations
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_db_migration == 'true' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: backend/go.sum
+
+      - name: Execute migrations
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT || '5432' }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_SCHEMA_NAME: ${{ secrets.DB_SCHEMA_NAME || 'postgres' }}
+          DB_SSL_MODE: ${{ secrets.DB_SSL_MODE || 'require' }}
+        run: |
+          if [ -z "$DB_HOST" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASSWORD" ]; then
+            echo "ERROR: Missing database secrets (DB_HOST, DB_USER, DB_PASSWORD)."
+            exit 1
+          fi
+          echo "Executing migrations against ${DB_HOST}:${DB_PORT}/${DB_SCHEMA_NAME}..."
+          go run ./migrate/cmd/main.go
+
+  build-and-release-mobile:
+    name: Build & Release Mobile App
+    runs-on: ubuntu-latest
+    needs: [db-migration]
+    if: |
+      always() &&
+      (needs.db-migration.result == 'success' || needs.db-migration.result == 'skipped')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Determine Version Metadata
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VER="${{ github.event.inputs.version }}"
+            CODE="${{ github.event.inputs.version_code }}"
+          else
+            # Extract version from app.json on push to main
+            VER=$(node -p "require('./mobile-app/app.json').expo.version")
+            CODE="${{ github.run_number }}"
+          fi
+          TAG="v${VER}"
+          TITLE="${{ github.event.inputs.release_title }}"
+          if [ -z "$TITLE" ]; then
+            TITLE="Time Tracker ${TAG}"
+          fi
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "version_code=${CODE}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "title=${TITLE}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: mobile-app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: mobile-app
+        run: npm ci
+
+      - name: Apply version to app.json & Android gradle
+        run: |
+          node -e "
+            const fs = require('fs');
+            const file = './mobile-app/app.json';
+            const json = JSON.parse(fs.readFileSync(file, 'utf8'));
+            json.expo.version = '${{ steps.meta.outputs.version }}';
+            if (!json.expo.android) json.expo.android = {};
+            json.expo.android.versionCode = parseInt('${{ steps.meta.outputs.version_code }}', 10);
+            fs.writeFileSync(file, JSON.stringify(json, null, 2));
+          "
+
+      - name: Build Android Standalone APK (Free Direct Install)
+        working-directory: mobile-app/android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Build Android App Bundle (Google Play AAB)
+        working-directory: mobile-app/android
+        run: ./gradlew bundleRelease --no-daemon
+
+      - name: Prepare Release Assets
+        run: |
+          mkdir -p release-artifacts
+          APK_PATH=$(find mobile-app/android/app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          AAB_PATH=$(find mobile-app/android/app/build/outputs/bundle/release -name "*.aab" | head -n 1)
+          
+          if [ -f "$APK_PATH" ]; then
+            cp "$APK_PATH" "release-artifacts/TimeTracker-${{ steps.meta.outputs.tag }}.apk"
+            echo "APK ready: release-artifacts/TimeTracker-${{ steps.meta.outputs.tag }}.apk"
+          else
+            echo "ERROR: APK not found"
+            exit 1
+          fi
+
+          if [ -f "$AAB_PATH" ]; then
+            cp "$AAB_PATH" "release-artifacts/TimeTracker-${{ steps.meta.outputs.tag }}.aab"
+            echo "AAB ready: release-artifacts/TimeTracker-${{ steps.meta.outputs.tag }}.aab"
+          else
+            echo "ERROR: AAB not found"
+            exit 1
+          fi
+
+      - name: Upload Play Store AAB Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TimeTracker-PlayStore-AAB-${{ steps.meta.outputs.tag }}
+          path: release-artifacts/*.aab
+          retention-days: 60
+
+      - name: Upload Standalone APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TimeTracker-Standalone-APK-${{ steps.meta.outputs.tag }}
+          path: release-artifacts/*.apk
+          retention-days: 60
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.title }}
+          body: |
+            ${{ github.event.inputs.release_notes || 'Automated release build for Time Tracker.' }}
+
+            ### Included Files:
+            - **`TimeTracker-${{ steps.meta.outputs.tag }}.apk`**: Direct install package for Android devices (100% free, no Play Store needed).
+            - **`TimeTracker-${{ steps.meta.outputs.tag }}.aab`**: Production Android App Bundle ready to upload to Google Play Console.
+          draft: false
+          prerelease: ${{ github.event.inputs.is_prerelease == 'true' }}
+          files: |
+            release-artifacts/TimeTracker-${{ steps.meta.outputs.tag }}.apk
+            release-artifacts/TimeTracker-${{ steps.meta.outputs.tag }}.aab
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
