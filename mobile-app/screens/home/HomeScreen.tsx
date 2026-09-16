@@ -26,6 +26,7 @@ import { Header } from '../../components/layout/Header';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { AppIcon } from '../../components/ui/AppIcon';
+import * as SecureStore from 'expo-secure-store';
 import { Track, TaskStatus } from '../../types/Track';
 
 interface Props {
@@ -53,20 +54,37 @@ const STATUS_CONFIG: Record<
   TaskStatus,
   { label: string; color: string; icon: string; family?: 'ionicons' | 'feather' | 'material' }
 > = {
-  created: { label: 'Created', color: '#6B7280', icon: 'ellipse-outline' },
-  'time-allocated': { label: 'Time Allocated', color: '#8B5CF6', icon: 'time-outline' },
-  pending: { label: 'Pending', color: '#F59E0B', icon: 'hourglass-outline' },
-  'in-progress': { label: 'In Progress', color: '#3B82F6', icon: 'play-circle-outline' },
-  completed: { label: 'Completed', color: '#10B981', icon: 'checkmark-circle-outline' },
+  created: { label: 'Created', color: '#6B7280', icon: 'ellipse' },
+  'time-allocated': { label: 'Time Allocated', color: '#8B5CF6', icon: 'time' },
+  pending: { label: 'Pending', color: '#F59E0B', icon: 'hourglass' },
+  'in-progress': { label: 'In Progress', color: '#3B82F6', icon: 'play-circle' },
+  completed: { label: 'Completed', color: '#10B981', icon: 'checkmark-circle' },
 };
 
 export default function HomeScreen({ navigation }: Props) {
-  const { tracks, deleteTrack, updateTrack, searchTracks, refreshTracks } = useTrackContext();
+  const { tracks, deleteTrack, updateTrack, searchTracks, refreshTracks, addTrack } = useTrackContext();
   const { colors } = useTheme();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  const [activeFilter, setActiveFilter] = useState<FilterType>('unallocated');
   const [refreshing, setRefreshing] = useState(false);
+
+  // Sorting state (configured via Settings)
+  const [taskSortBy, setTaskSortBy] = useState<'priority' | 'status'>('priority');
+  const [taskSortOrder, setTaskSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  useEffect(() => {
+    (async () => {
+      const savedSortBy = await SecureStore.getItemAsync('task_sort_by');
+      const savedSortOrder = await SecureStore.getItemAsync('task_sort_order');
+      if (savedSortBy === 'priority' || savedSortBy === 'status') {
+        setTaskSortBy(savedSortBy);
+      }
+      if (savedSortOrder === 'asc' || savedSortOrder === 'desc') {
+        setTaskSortOrder(savedSortOrder);
+      }
+    })();
+  }, []);
 
   // Status transition modal state
   const [selectedTaskForStatus, setSelectedTaskForStatus] = useState<Track | null>(null);
@@ -112,18 +130,67 @@ export default function HomeScreen({ navigation }: Props) {
     );
   };
 
-  // Filter tasks
+  const handleDuplicate = async (track: Track) => {
+    try {
+      await addTrack({
+        title: `${track.title} (Copy)`,
+        description: track.description,
+        status: track.taskType === 'allocated' ? 'time-allocated' : 'created',
+        priority: track.priority,
+        taskType: track.taskType,
+        timeInputMode: track.timeInputMode,
+        allocatedStartTime: track.allocatedStartTime,
+        allocatedEndTime: track.allocatedEndTime,
+        blockMultiplier: track.blockMultiplier,
+        durationMinutes: track.durationMinutes,
+        startTime: track.startTime || new Date(),
+        tags: track.tags,
+      });
+      Alert.alert('Task Duplicated', `"${track.title}" has been duplicated.`);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to duplicate task.');
+    }
+  };
+
+  // Filter tasks (hide completed from active workspace view)
   const searchedTracks = searchQuery ? searchTracks(searchQuery) : tracks;
   const filteredTracks = searchedTracks.filter((t) => {
     if (activeFilter === 'completed') return t.status === 'completed';
     if (activeFilter === 'allocated') return t.taskType === 'allocated' && t.status !== 'completed';
     if (activeFilter === 'unallocated') return t.taskType === 'unallocated' && t.status !== 'completed';
-    return true; // 'all'
+    return t.status !== 'completed';
   });
+
+  // Sort tasks
+  const sortedTracks = [...filteredTracks].sort((a, b) => {
+    if (taskSortBy === 'priority') {
+      const pWeights: Record<string, number> = { high: 3, medium: 2, low: 1 };
+      const diff = (pWeights[b.priority] || 0) - (pWeights[a.priority] || 0);
+      return taskSortOrder === 'asc' ? -diff : diff;
+    } else {
+      const sWeights: Record<string, number> = {
+        'in-progress': 4,
+        'time-allocated': 3,
+        pending: 2,
+        created: 1,
+        completed: 0,
+      };
+      const diff = (sWeights[b.status] || 0) - (sWeights[a.status] || 0);
+      return taskSortOrder === 'asc' ? -diff : diff;
+    }
+  });
+
+  const getGroupKey = (track: Track): string => {
+    if (taskSortBy === 'priority') {
+      return track.priority === 'high' ? 'High Priority' : track.priority === 'medium' ? 'Medium Priority' : 'Low Priority';
+    } else {
+      return STATUS_CONFIG[track.status]?.label || track.status;
+    }
+  };
 
   // Calculate counts for filter chips
   const counts = {
-    all: tracks.length,
+    all: tracks.filter((t) => t.status !== 'completed').length,
     allocated: tracks.filter((t) => t.taskType === 'allocated' && t.status !== 'completed').length,
     unallocated: tracks.filter((t) => t.taskType === 'unallocated' && t.status !== 'completed').length,
     completed: tracks.filter((t) => t.status === 'completed').length,
@@ -216,12 +283,12 @@ export default function HomeScreen({ navigation }: Props) {
 
         {/* ── Task List ──────────────────────────────────────────── */}
         <FlatList
-          data={filteredTracks}
+          data={sortedTracks}
           keyExtractor={(item) => item.id}
           refreshing={refreshing}
           onRefresh={onRefresh}
           contentContainerStyle={{ paddingBottom: 90 }}
-          renderItem={({ item }) => {
+          renderItem={({ item, index }) => {
             const statusInfo = STATUS_CONFIG[item.status] || STATUS_CONFIG.created;
             const priorityColor =
               item.priority === 'high'
@@ -230,105 +297,122 @@ export default function HomeScreen({ navigation }: Props) {
                 ? colors.priorityMedium
                 : colors.priorityLow;
 
+            const showGroupDivider = index === 0 || getGroupKey(sortedTracks[index - 1]) !== getGroupKey(item);
+
             return (
-              <TouchableOpacity
-                onPress={() => navigation.navigate('TrackDetails', { id: item.id })}
-                activeOpacity={0.8}
-              >
-                <Card style={s.trackCard}>
-                  {/* Header Row: Title & Priority */}
-                  <View style={s.trackHeader}>
-                    <Text style={s.trackTitle} numberOfLines={2}>
-                      {item.title}
-                    </Text>
-                    <View style={s.badgeRow}>
-                      <View style={[s.priorityBadge, { backgroundColor: priorityColor + '20', borderColor: priorityColor, flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
-                        <AppIcon
-                          name={item.priority === 'high' ? 'alert-circle' : item.priority === 'medium' ? 'remove-circle' : 'checkmark-circle'}
-                          size={12}
-                          color={priorityColor}
-                        />
-                        <Text style={[s.priorityText, { color: priorityColor }]}>
-                          {item.priority === 'high' ? 'High' : item.priority === 'medium' ? 'Med' : 'Low'}
-                        </Text>
-                      </View>
-                    </View>
+              <View>
+                {showGroupDivider && (
+                  <View style={s.groupDividerContainer}>
+                    <Text style={s.groupDividerTitle}>{getGroupKey(item)}</Text>
+                    <View style={s.groupDividerLine} />
                   </View>
+                )}
 
-                  {/* Description */}
-                  {!!item.description && (
-                    <Text style={s.trackDescription} numberOfLines={2}>
-                      {item.description}
-                    </Text>
-                  )}
-
-                  {/* Allocated Time & Block Info (Module A) */}
-                  {item.taskType === 'allocated' ? (
-                    <View style={s.scheduleInfoBox}>
-                      <AppIcon name="time-outline" size={18} color={colors.primary} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.scheduleTime}>
-                          {formatDisplayTime(item.allocatedStartTime)} – {formatDisplayTime(item.allocatedEndTime)}
-                        </Text>
-                        <Text style={s.scheduleBlocks}>
-                          {item.blockMultiplier ? `${item.blockMultiplier} block${item.blockMultiplier > 1 ? 's' : ''}` : 'Scheduled'} · {item.durationMinutes || (item.blockMultiplier ? item.blockMultiplier * 45 : 45)} min
-                        </Text>
-                      </View>
-                      <View style={[s.trackTypeBadge, { flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
-                        <AppIcon name="flash-outline" size={12} color={colors.primary} />
-                        <Text style={s.trackTypeBadgeText}>Same-Day</Text>
-                      </View>
-                    </View>
-                  ) : (
-                    <View style={[s.unscheduledInfoBox, { flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
-                      <AppIcon name="document-text-outline" size={14} color={colors.textSecondary} />
-                      <Text style={s.unscheduledText}>Unscheduled task</Text>
-                    </View>
-                  )}
-
-                  {/* Tags */}
-                  {item.tags && item.tags.length > 0 && (
-                    <View style={s.tagsContainer}>
-                      {item.tags.map((tag, idx) => (
-                        <View key={idx} style={s.tag}>
-                          <Text style={s.tagText}>#{tag}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-
-                  {/* Footer Row: Interactive Status Dropdown & Action Buttons */}
-                  <View style={s.trackFooter}>
-                    {/* Status Button (Tappable Dropdown) */}
-                    <TouchableOpacity
-                      style={[s.statusDropdownBtn, { backgroundColor: statusInfo.color + '18', borderColor: statusInfo.color }]}
-                      onPress={() => setSelectedTaskForStatus(item)}
-                    >
-                      <AppIcon name={statusInfo.icon} size={15} color={statusInfo.color} />
-                      <Text style={[s.statusDropdownText, { color: statusInfo.color }]}>
-                        {statusInfo.label}
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('TrackDetails', { id: item.id })}
+                  activeOpacity={0.8}
+                >
+                  <Card style={s.trackCard}>
+                    {/* Header Row: Title & Priority */}
+                    <View style={s.trackHeader}>
+                      <Text style={s.trackTitle} numberOfLines={2}>
+                        {item.title}
                       </Text>
-                      <AppIcon name="chevron-down" size={14} color={statusInfo.color} />
-                    </TouchableOpacity>
-
-                    {/* Actions */}
-                    <View style={s.actions}>
-                      <TouchableOpacity
-                        style={s.iconActionBtn}
-                        onPress={() => navigation.navigate('CreateEdit', { id: item.id })}
-                      >
-                        <AppIcon name="create-outline" size={18} color={colors.textSecondary} />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={s.iconActionBtn}
-                        onPress={() => handleDelete(item.id, item.title)}
-                      >
-                        <AppIcon name="trash-outline" size={18} color={colors.error || '#EF4444'} />
-                      </TouchableOpacity>
+                      <View style={s.badgeRow}>
+                        <View style={[s.priorityBadge, { backgroundColor: priorityColor + '20', borderColor: priorityColor, flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+                          <AppIcon
+                            name={item.priority === 'high' ? 'alert-circle' : item.priority === 'medium' ? 'remove-circle' : 'checkmark-circle'}
+                            size={12}
+                            color={priorityColor}
+                          />
+                          <Text style={[s.priorityText, { color: priorityColor }]}>
+                            {item.priority === 'high' ? 'High' : item.priority === 'medium' ? 'Med' : 'Low'}
+                          </Text>
+                        </View>
+                      </View>
                     </View>
-                  </View>
-                </Card>
-              </TouchableOpacity>
+
+                    {/* Description */}
+                    {!!item.description && (
+                      <Text style={s.trackDescription} numberOfLines={2}>
+                        {item.description}
+                      </Text>
+                    )}
+
+                    {/* Allocated Time & Block Info (Module A) */}
+                    {item.taskType === 'allocated' ? (
+                      <View style={s.scheduleInfoBox}>
+                        <AppIcon name="time-outline" size={18} color={colors.primary} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.scheduleTime}>
+                            {formatDisplayTime(item.allocatedStartTime)} – {formatDisplayTime(item.allocatedEndTime)}
+                          </Text>
+                          <Text style={s.scheduleBlocks}>
+                            {item.blockMultiplier ? `${item.blockMultiplier} block${item.blockMultiplier > 1 ? 's' : ''}` : 'Scheduled'} · {item.durationMinutes || (item.blockMultiplier ? item.blockMultiplier * 45 : 45)} min
+                          </Text>
+                        </View>
+                        <View style={[s.trackTypeBadge, { flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+                          <AppIcon name="flash-outline" size={12} color={colors.primary} />
+                          <Text style={s.trackTypeBadgeText}>Same-Day</Text>
+                        </View>
+                      </View>
+                    ) : (
+                      <View style={[s.unscheduledInfoBox, { flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
+                        <AppIcon name="document-text-outline" size={14} color={colors.textSecondary} />
+                        <Text style={s.unscheduledText}>Unscheduled task</Text>
+                      </View>
+                    )}
+
+                    {/* Tags */}
+                    {item.tags && item.tags.length > 0 && (
+                      <View style={s.tagsContainer}>
+                        {item.tags.map((tag, idx) => (
+                          <View key={idx} style={s.tag}>
+                            <Text style={s.tagText}>#{tag}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+
+                    {/* Footer Row: Interactive Status Dropdown & Action Buttons */}
+                    <View style={s.trackFooter}>
+                      {/* Status Button (Tappable Dropdown) */}
+                      <TouchableOpacity
+                        style={[s.statusDropdownBtn, { backgroundColor: statusInfo.color + '18', borderColor: statusInfo.color }]}
+                        onPress={() => setSelectedTaskForStatus(item)}
+                      >
+                        <AppIcon name={statusInfo.icon} size={15} color={statusInfo.color} />
+                        <Text style={[s.statusDropdownText, { color: statusInfo.color }]}>
+                          {statusInfo.label}
+                        </Text>
+                        <AppIcon name="chevron-down" size={14} color={statusInfo.color} />
+                      </TouchableOpacity>
+
+                      {/* Actions */}
+                      <View style={s.actions}>
+                        <TouchableOpacity
+                          style={s.iconActionBtn}
+                          onPress={() => handleDuplicate(item)}
+                        >
+                          <AppIcon name="copy" size={18} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={s.iconActionBtn}
+                          onPress={() => navigation.navigate('CreateEdit', { id: item.id })}
+                        >
+                          <AppIcon name="create" size={18} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={s.iconActionBtn}
+                          onPress={() => handleDelete(item.id, item.title)}
+                        >
+                          <AppIcon name="trash" size={18} color={colors.error || '#EF4444'} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </Card>
+                </TouchableOpacity>
+              </View>
             );
           }}
           ListEmptyComponent={
@@ -427,6 +511,26 @@ function makeStyles(colors: any) {
       paddingHorizontal: 16,
       paddingTop: 12,
       paddingBottom: 8,
+    },
+    groupDividerContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginHorizontal: 16,
+      marginTop: 14,
+      marginBottom: 8,
+      gap: 10,
+    },
+    groupDividerTitle: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.textTertiary,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    groupDividerLine: {
+      flex: 1,
+      height: 1,
+      backgroundColor: colors.border,
     },
     filterScrollWrapper: {
       marginBottom: 8,
@@ -605,7 +709,11 @@ function makeStyles(colors: any) {
       gap: 6,
     },
     iconActionBtn: {
-      padding: 6,
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     actionEmoji: {
       fontSize: 16,

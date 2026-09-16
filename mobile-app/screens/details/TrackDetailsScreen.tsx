@@ -19,7 +19,7 @@ interface Props {
 
 export default function TrackDetailsScreen({ navigation, route }: Props) {
   const { id } = route.params;
-  const { getTrackById, deleteTrack } = useTrackContext();
+  const { getTrackById, deleteTrack, addTrack } = useTrackContext();
   const { colors } = useTheme();
 
   const track = getTrackById(id);
@@ -83,6 +83,30 @@ export default function TrackDetailsScreen({ navigation, route }: Props) {
     });
   };
 
+  const handleDuplicate = async () => {
+    try {
+      await addTrack({
+        title: `${track.title} (Copy)`,
+        description: track.description,
+        status: track.taskType === 'allocated' ? 'time-allocated' : 'created',
+        priority: track.priority,
+        taskType: track.taskType,
+        timeInputMode: track.timeInputMode,
+        allocatedStartTime: track.allocatedStartTime,
+        allocatedEndTime: track.allocatedEndTime,
+        blockMultiplier: track.blockMultiplier,
+        durationMinutes: track.durationMinutes,
+        startTime: track.startTime || new Date(),
+        tags: track.tags,
+      });
+      Alert.alert('Task Duplicated', 'Task was copied successfully.', [
+        { text: 'OK', onPress: () => navigation.goBack() },
+      ]);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Failed to duplicate task.');
+    }
+  };
+
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
@@ -107,10 +131,12 @@ export default function TrackDetailsScreen({ navigation, route }: Props) {
         </View>
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Description</Text>
-        <Text style={styles.description}>{track.description || 'No description provided.'}</Text>
-      </View>
+      {track.description ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Description</Text>
+          <Text style={styles.description}>{track.description}</Text>
+        </View>
+      ) : null}
 
       {track.tags && track.tags.length > 0 && (
         <View style={styles.section}>
@@ -118,7 +144,7 @@ export default function TrackDetailsScreen({ navigation, route }: Props) {
           <View style={styles.tagsContainer}>
             {track.tags.map((tag, index) => (
               <View key={index} style={styles.tag}>
-                <Text style={styles.tagText}>#{tag}</Text>
+                <Text style={styles.tagText}>{tag}</Text>
               </View>
             ))}
           </View>
@@ -144,6 +170,13 @@ export default function TrackDetailsScreen({ navigation, route }: Props) {
       </View>
 
       <View style={styles.actions}>
+        <TouchableOpacity
+          style={[styles.button, styles.duplicateButton, { flexDirection: 'row', justifyContent: 'center', gap: 8 }]}
+          onPress={handleDuplicate}
+        >
+          <AppIcon name="copy-outline" size={18} color="#fff" />
+          <Text style={styles.editButtonText}>Duplicate Task</Text>
+        </TouchableOpacity>
         <TouchableOpacity
           style={[styles.button, styles.editButton, { flexDirection: 'row', justifyContent: 'center', gap: 8 }]}
           onPress={() => navigation.navigate('CreateEdit', { id })}
@@ -251,6 +284,9 @@ function makeStyles(colors: any) {
       padding: 16,
       borderRadius: 8,
       alignItems: 'center',
+    },
+    duplicateButton: {
+      backgroundColor: colors.info,
     },
     editButton: {
       backgroundColor: colors.primary,

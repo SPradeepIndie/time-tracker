@@ -98,11 +98,11 @@ export default function AnalyticsScreen({ navigation }: Props) {
         {/* Header */}
         <View style={s.header}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <AppIcon name="bar-chart-outline" size={24} color={colors.primary} />
+            <AppIcon name="stats-chart" size={24} color={colors.primary} />
             <Text style={s.headerTitle}>Analytics</Text>
           </View>
           <TouchableOpacity onPress={loadData} style={[s.refreshBtn, { flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
-            <AppIcon name="refresh-outline" size={16} color={colors.primary} />
+            <AppIcon name="refresh" size={16} color={colors.primary} />
             <Text style={[s.refreshText, { color: colors.primary }]}>Refresh</Text>
           </TouchableOpacity>
         </View>
@@ -138,7 +138,7 @@ export default function AnalyticsScreen({ navigation }: Props) {
               {/* T_prod — Productivity Time */}
               <View style={[s.metricCard, { backgroundColor: colors.card }]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                  <AppIcon name="timer-outline" size={18} color={colors.primary} />
+                  <AppIcon name="timer" size={18} color={colors.primary} />
                   <Text style={s.metricTitle}>Productivity Time · T_prod</Text>
                 </View>
                 <Text style={[s.metricBig, { color: colors.primary }]}>
@@ -210,7 +210,7 @@ export default function AnalyticsScreen({ navigation }: Props) {
               {/* Category Progression Matrix */}
               <View style={[s.metricCard, { backgroundColor: colors.card }]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                  <AppIcon name="folder-outline" size={18} color={colors.primary} />
+                  <AppIcon name="folder" size={18} color={colors.primary} />
                   <Text style={s.metricTitle}>Category Progression · P_category(c)</Text>
                 </View>
                 <Text style={s.formulaText}>
@@ -235,7 +235,7 @@ export default function AnalyticsScreen({ navigation }: Props) {
               {/* Weekly averages summary */}
               <View style={[s.metricCard, { backgroundColor: colors.card }]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                  <AppIcon name="trending-up-outline" size={18} color={colors.primary} />
+                  <AppIcon name="trending-up" size={18} color={colors.primary} />
                   <Text style={s.metricTitle}>Weekly Averages</Text>
                 </View>
                 {[

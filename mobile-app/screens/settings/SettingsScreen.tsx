@@ -199,7 +199,7 @@ export default function SettingsScreen({ navigation }: Props) {
 
           {/* ── Appearance (Dark / Light Theme) ───────────────────────── */}
           <View style={s.sectionHeader}>
-            <AppIcon name="moon-outline" size={16} color={colors.textTertiary} />
+            <AppIcon name="moon" size={16} color={colors.textTertiary} />
             <Text style={s.sectionTitle}>Appearance</Text>
           </View>
           <Card>
@@ -223,7 +223,7 @@ export default function SettingsScreen({ navigation }: Props) {
 
           {/* ── Task Display & Sorting ───────────────────────────────── */}
           <View style={s.sectionHeader}>
-            <AppIcon name="funnel-outline" size={16} color={colors.textTertiary} />
+            <AppIcon name="funnel" size={16} color={colors.textTertiary} />
             <Text style={s.sectionTitle}>Task Sorting</Text>
           </View>
           <Card>
@@ -272,7 +272,7 @@ export default function SettingsScreen({ navigation }: Props) {
 
           {/* ── Storage Analysis ──────────────────────────────────────── */}
           <View style={s.sectionHeader}>
-            <AppIcon name="server-outline" size={16} color={colors.textTertiary} />
+            <AppIcon name="server" size={16} color={colors.textTertiary} />
             <Text style={s.sectionTitle}>Storage Analysis</Text>
           </View>
           <Card>
@@ -321,7 +321,7 @@ export default function SettingsScreen({ navigation }: Props) {
 
           {/* ── Sync ─────────────────────────────────────────────────── */}
           <View style={s.sectionHeader}>
-            <AppIcon name="cloud-outline" size={16} color={colors.textTertiary} />
+            <AppIcon name="cloud" size={16} color={colors.textTertiary} />
             <Text style={s.sectionTitle}>Cloud Sync</Text>
           </View>
           <Card>
@@ -370,7 +370,7 @@ export default function SettingsScreen({ navigation }: Props) {
 
           {/* ── Security ──────────────────────────────────────────── */}
           <View style={s.sectionHeader}>
-            <AppIcon name="lock-closed-outline" size={16} color={colors.textTertiary} />
+            <AppIcon name="lock-closed" size={16} color={colors.textTertiary} />
             <Text style={s.sectionTitle}>Security</Text>
           </View>
           <Card>
@@ -385,7 +385,7 @@ export default function SettingsScreen({ navigation }: Props) {
 
           {/* ── Danger Zone ───────────────────────────────────────── */}
           <View style={s.sectionHeader}>
-            <AppIcon name="warning-outline" size={16} color={colors.priorityHigh} />
+            <AppIcon name="warning" size={16} color={colors.priorityHigh} />
             <Text style={[s.sectionTitle, { color: colors.priorityHigh }]}>Danger Zone</Text>
           </View>
           <Card style={{ borderColor: colors.priorityHigh + '40', borderWidth: 1 }}>
@@ -408,7 +408,7 @@ export default function SettingsScreen({ navigation }: Props) {
 
           {/* ── About ────────────────────────────────────────────── */}
           <View style={s.sectionHeader}>
-            <AppIcon name="information-circle-outline" size={16} color={colors.textTertiary} />
+            <AppIcon name="information-circle" size={16} color={colors.textTertiary} />
             <Text style={s.sectionTitle}>About</Text>
           </View>
           <Card>
