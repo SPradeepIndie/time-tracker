@@ -70,4 +70,4 @@ dist-ssr/
 
 #agents
 .agents
-.agents/
+.agents/rules
