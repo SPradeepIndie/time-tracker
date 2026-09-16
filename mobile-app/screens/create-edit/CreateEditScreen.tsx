@@ -33,6 +33,7 @@ import {
   BLOCK_DURATION_MINUTES,
 } from '../../types/Track';
 import { SafeAreaView } from '../../components/layout/SafeAreaView';
+import { AppIcon } from '../../components/ui/AppIcon';
 
 interface Props {
   navigation: CreateEditScreenNavigationProp;
@@ -326,9 +327,16 @@ export default function CreateEditScreen({ navigation, route }: Props) {
               style={[s.typeTab, taskType === 'unallocated' && s.typeTabActive]}
               onPress={() => setTaskType('unallocated')}
             >
-              <Text style={[s.typeTabText, taskType === 'unallocated' && s.typeTabTextActive]}>
-                📋 Unscheduled
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <AppIcon
+                  name="document-text-outline"
+                  size={16}
+                  color={taskType === 'unallocated' ? '#fff' : colors.text}
+                />
+                <Text style={[s.typeTabText, taskType === 'unallocated' && s.typeTabTextActive]}>
+                  Unscheduled
+                </Text>
+              </View>
               <Text style={s.typeTabSub}>No set schedule</Text>
             </TouchableOpacity>
 
@@ -336,9 +344,16 @@ export default function CreateEditScreen({ navigation, route }: Props) {
               style={[s.typeTab, taskType === 'allocated' && s.typeTabActive]}
               onPress={() => setTaskType('allocated')}
             >
-              <Text style={[s.typeTabText, taskType === 'allocated' && s.typeTabTextActive]}>
-                ⚡ Scheduled (Today)
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <AppIcon
+                  name="time-outline"
+                  size={16}
+                  color={taskType === 'allocated' ? '#fff' : colors.text}
+                />
+                <Text style={[s.typeTabText, taskType === 'allocated' && s.typeTabTextActive]}>
+                  Scheduled (Today)
+                </Text>
+              </View>
               <Text style={s.typeTabSub}>Fixed 45m blocks</Text>
             </TouchableOpacity>
           </View>
@@ -347,7 +362,10 @@ export default function CreateEditScreen({ navigation, route }: Props) {
         {/* ── Allocated Time Options (Track 2) ───────────────────── */}
         {taskType === 'allocated' && (
           <View style={s.allocatedContainer}>
-            <Text style={s.subSectionTitle}>⏰ Time Allocation Interface</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+              <AppIcon name="alarm-outline" size={18} color={colors.primary} />
+              <Text style={s.subSectionTitle}>Time Allocation Interface</Text>
+            </View>
 
             {/* Mode Selector */}
             <View style={s.modeSelector}>

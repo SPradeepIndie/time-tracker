@@ -13,6 +13,7 @@ import { SafeAreaView } from '../../components/layout/SafeAreaView';
 import { useTheme } from '../../context/ThemeContext';
 import { useGoalContext } from '../../context/GoalContext';
 import { GoalsScreenNavigationProp } from '../../navigation/types';
+import { AppIcon } from '../../components/ui/AppIcon';
 import { DailyGoal, WeeklyGoal, WeeklyGoalCategory, MAX_DAILY_GOALS, INITIAL_DAILY_GOAL_FIELDS, getTodayDateString, getTomorrowDateString } from '../../types/Goal';
 import { ROUTINE_COLORS } from '../../types/Routine';
 
@@ -24,9 +25,10 @@ export default function GoalsScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const {
     todayGoals, tomorrowGoals, isLoading,
-    addDailyGoal, toggleDailyGoal, deleteDailyGoal,
-    categories, addCategory, deleteCategory,
-    weeklyGoals, addWeeklyGoal, toggleWeeklyGoal, deleteWeeklyGoal,
+    addDailyGoal, toggleDailyGoal, updateDailyGoalText, deleteDailyGoal, duplicateDailyGoal,
+    categories, addCategory, updateCategory, deleteCategory,
+    weeklyGoals, currentWeekLabel, nextWeekLabel, selectedWeekLabel, setSelectedWeekLabel,
+    addWeeklyGoal, toggleWeeklyGoal, updateWeeklyGoalText, deleteWeeklyGoal, duplicateWeeklyGoal,
   } = useGoalContext();
 
   const [activeTab, setActiveTab] = useState<TabType>('daily');
@@ -35,6 +37,7 @@ export default function GoalsScreen({ navigation }: Props) {
 
   // Category management modal
   const [categoryModal, setCategoryModal] = useState(false);
+  const [selectedCatForColor, setSelectedCatForColor] = useState<string | null>(null);
   const [newCatName, setNewCatName] = useState('');
   const [newCatColor, setNewCatColor] = useState(ROUTINE_COLORS[0]);
 
@@ -43,6 +46,12 @@ export default function GoalsScreen({ navigation }: Props) {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [selectedParentId, setSelectedParentId] = useState<string | null>(null);
   const [newWeeklyGoalText, setNewWeeklyGoalText] = useState('');
+
+  // Edit Goal Modal (Daily or Weekly)
+  const [editGoalModal, setEditGoalModal] = useState(false);
+  const [editingGoalType, setEditingGoalType] = useState<'daily' | 'weekly'>('daily');
+  const [editingGoalId, setEditingGoalId] = useState('');
+  const [editingGoalText, setEditingGoalText] = useState('');
 
   // Expanded goal IDs (for showing children)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -85,6 +94,22 @@ export default function GoalsScreen({ navigation }: Props) {
     }
   }, [newWeeklyGoalText, selectedCategoryId, selectedParentId, addWeeklyGoal]);
 
+  const handleSaveEditedGoal = useCallback(async () => {
+    if (!editingGoalText.trim() || !editingGoalId) return;
+    try {
+      if (editingGoalType === 'daily') {
+        await updateDailyGoalText(editingGoalId, editingGoalText.trim());
+      } else {
+        await updateWeeklyGoalText(editingGoalId, editingGoalText.trim());
+      }
+      setEditGoalModal(false);
+      setEditingGoalId('');
+      setEditingGoalText('');
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    }
+  }, [editingGoalText, editingGoalId, editingGoalType, updateDailyGoalText, updateWeeklyGoalText]);
+
   const toggleExpanded = (id: string) => {
     setExpandedIds((prev) => {
       const next = new Set(prev);
@@ -106,12 +131,31 @@ export default function GoalsScreen({ navigation }: Props) {
         style={[s.checkbox, goal.isCompleted && s.checkboxDone]}
         onPress={() => toggleDailyGoal(goal.id, !goal.isCompleted)}
       >
-        {goal.isCompleted && <Text style={s.checkmark}>✓</Text>}
+        {goal.isCompleted && <AppIcon name="checkmark" size={14} color="#fff" />}
       </TouchableOpacity>
       <Text style={[s.goalText, goal.isCompleted && s.goalTextDone]}>{goal.text}</Text>
-      <TouchableOpacity onPress={() => deleteDailyGoal(goal.id)} style={s.deleteBtn}>
-        <Text style={s.deleteBtnText}>✕</Text>
-      </TouchableOpacity>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <TouchableOpacity
+          onPress={() => {
+            setEditingGoalType('daily');
+            setEditingGoalId(goal.id);
+            setEditingGoalText(goal.text);
+            setEditGoalModal(true);
+          }}
+          style={s.actionIconBtn}
+        >
+          <AppIcon name="pencil" size={17} color={colors.textSecondary} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => duplicateDailyGoal(goal)}
+          style={s.actionIconBtn}
+        >
+          <AppIcon name="copy" size={17} color={colors.textSecondary} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => deleteDailyGoal(goal.id)} style={s.deleteBtn}>
+          <AppIcon name="trash" size={17} color={colors.error || '#EF4444'} />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 
@@ -130,31 +174,57 @@ export default function GoalsScreen({ navigation }: Props) {
             style={[s.checkbox, goal.isCompleted && s.checkboxDone]}
             onPress={() => toggleWeeklyGoal(goal.id, !goal.isCompleted)}
           >
-            {goal.isCompleted && <Text style={s.checkmark}>✓</Text>}
+            {goal.isCompleted && <AppIcon name="checkmark" size={14} color="#fff" />}
           </TouchableOpacity>
           <TouchableOpacity
-            style={{ flex: 1 }}
+            style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}
             onPress={() => hasChildren && toggleExpanded(goal.id)}
           >
+            {hasChildren && (
+              <AppIcon
+                name={isExpanded ? 'chevron-down' : 'chevron-forward'}
+                size={14}
+                color={colors.textSecondary}
+              />
+            )}
             <Text style={[s.goalText, goal.isCompleted && s.goalTextDone]}>
-              {hasChildren ? (isExpanded ? '▾ ' : '▸ ') : '  '}{goal.text}
+              {goal.text}
             </Text>
           </TouchableOpacity>
-          {goal.tier < 3 && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {goal.tier < 3 && (
+              <TouchableOpacity
+                style={s.addSubBtn}
+                onPress={() => {
+                  setSelectedParentId(goal.id);
+                  setSelectedCategoryId(goal.categoryId);
+                  setWeeklyGoalModal(true);
+                }}
+              >
+                <Text style={[s.addSubBtnText, { color: colors.primary }]}>+Sub</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
-              style={s.addSubBtn}
               onPress={() => {
-                setSelectedParentId(goal.id);
-                setSelectedCategoryId(goal.categoryId);
-                setWeeklyGoalModal(true);
+                setEditingGoalType('weekly');
+                setEditingGoalId(goal.id);
+                setEditingGoalText(goal.text);
+                setEditGoalModal(true);
               }}
+              style={s.actionIconBtn}
             >
-              <Text style={[s.addSubBtnText, { color: colors.primary }]}>+Sub</Text>
+              <AppIcon name="pencil" size={16} color={colors.textSecondary} />
             </TouchableOpacity>
-          )}
-          <TouchableOpacity onPress={() => deleteWeeklyGoal(goal.id)} style={s.deleteBtn}>
-            <Text style={s.deleteBtnText}>✕</Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => duplicateWeeklyGoal(goal)}
+              style={s.actionIconBtn}
+            >
+              <AppIcon name="copy" size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => deleteWeeklyGoal(goal.id)} style={s.deleteBtn}>
+              <AppIcon name="trash" size={16} color={colors.error || '#EF4444'} />
+            </TouchableOpacity>
+          </View>
         </View>
         {isExpanded && children.map((c) => renderWeeklyGoal(c, depth + 1))}
       </View>
@@ -212,7 +282,10 @@ export default function GoalsScreen({ navigation }: Props) {
       <View style={s.container}>
         {/* Header */}
         <View style={s.header}>
-          <Text style={s.headerTitle}>🎯 Goals</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <AppIcon name="flag" size={24} color={colors.primary} />
+            <Text style={s.headerTitle}>Goals</Text>
+          </View>
         </View>
 
         {/* Tab Switcher */}
@@ -241,7 +314,10 @@ export default function GoalsScreen({ navigation }: Props) {
                 {/* Today's goals */}
                 {todayGoals.length > 0 && (
                   <View style={s.section}>
-                    <Text style={s.sectionTitle}>📅 Today's Goals</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                      <AppIcon name="calendar" size={16} color={colors.primary} />
+                      <Text style={s.sectionTitle}>Today's Goals</Text>
+                    </View>
                     {todayGoals.map(renderDailyGoalRow)}
                   </View>
                 )}
@@ -249,7 +325,10 @@ export default function GoalsScreen({ navigation }: Props) {
                 {/* Plan for tomorrow */}
                 <View style={s.section}>
                   <View style={s.sectionHeaderRow}>
-                    <Text style={s.sectionTitle}>🌙 Plan for Tomorrow</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <AppIcon name="moon" size={16} color={colors.primary} />
+                      <Text style={s.sectionTitle}>Plan for Tomorrow</Text>
+                    </View>
                     <Text style={s.countLabel}>{tomorrowGoals.length}/{MAX_DAILY_GOALS}</Text>
                   </View>
 
@@ -296,12 +375,35 @@ export default function GoalsScreen({ navigation }: Props) {
             {/* ── WEEKLY GOALS ───────────────────────────────────── */}
             {activeTab === 'weekly' && (
               <View>
+                {/* Week Selector: This Week vs Next Week */}
+                <View style={s.weekSelectorContainer}>
+                  <TouchableOpacity
+                    style={[s.weekSelectorBtn, selectedWeekLabel === currentWeekLabel && s.weekSelectorBtnActive]}
+                    onPress={() => setSelectedWeekLabel(currentWeekLabel)}
+                  >
+                    <Text style={[s.weekSelectorText, selectedWeekLabel === currentWeekLabel && s.weekSelectorTextActive]}>
+                      This Week ({currentWeekLabel})
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[s.weekSelectorBtn, selectedWeekLabel === nextWeekLabel && s.weekSelectorBtnActive]}
+                    onPress={() => setSelectedWeekLabel(nextWeekLabel)}
+                  >
+                    <Text style={[s.weekSelectorText, selectedWeekLabel === nextWeekLabel && s.weekSelectorTextActive]}>
+                      Next Week ({nextWeekLabel})
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
                 {/* Manage categories */}
                 <TouchableOpacity
                   style={[s.manageCatBtn, { borderColor: colors.border }]}
                   onPress={() => setCategoryModal(true)}
                 >
-                  <Text style={[s.manageCatBtnText, { color: colors.primary }]}>⚙ Manage Categories</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <AppIcon name="settings" size={16} color={colors.primary} />
+                    <Text style={[s.manageCatBtnText, { color: colors.primary }]}>Manage Categories & Colors</Text>
+                  </View>
                 </TouchableOpacity>
 
                 {categories.map(renderCategory)}
@@ -309,6 +411,42 @@ export default function GoalsScreen({ navigation }: Props) {
             )}
           </ScrollView>
         )}
+
+        {/* ── Edit Goal Modal (Daily or Weekly) ───────────────────── */}
+        <Modal visible={editGoalModal} transparent animationType="fade">
+          <KeyboardAvoidingView
+            style={s.modalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+              <View style={s.modalBackdrop} />
+            </TouchableWithoutFeedback>
+            <View style={[s.modalCard, { backgroundColor: colors.surface }]}>
+              <Text style={[s.modalTitle, { color: colors.text }]}>
+                {editingGoalType === 'daily' ? 'Edit Daily Goal' : 'Edit Weekly Goal'}
+              </Text>
+              <TextInput
+                style={[s.modalInput, { borderColor: colors.border, color: colors.text }]}
+                placeholder="Goal text…"
+                placeholderTextColor={colors.placeholder}
+                value={editingGoalText}
+                onChangeText={setEditingGoalText}
+                autoFocus
+              />
+              <View style={s.modalActions}>
+                <TouchableOpacity onPress={() => { setEditGoalModal(false); setEditingGoalId(''); setEditingGoalText(''); }}>
+                  <Text style={[s.modalCancel, { color: colors.textSecondary }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.modalConfirm, { backgroundColor: colors.primary }]}
+                  onPress={handleSaveEditedGoal}
+                >
+                  <Text style={s.modalConfirmText}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
 
         {/* ── Add Weekly Goal Modal ────────────────────────────────── */}
         <Modal visible={weeklyGoalModal} transparent animationType="fade">
@@ -357,20 +495,73 @@ export default function GoalsScreen({ navigation }: Props) {
             </TouchableWithoutFeedback>
             <View style={[s.modalCard, { backgroundColor: colors.surface }]}>
               <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-                <Text style={[s.modalTitle, { color: colors.text }]}>Manage Categories</Text>
+                <Text style={[s.modalTitle, { color: colors.text }]}>Manage Categories & Colors</Text>
+                <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 12 }}>
+                  Tap any category or its color dot to choose a new color palette.
+                </Text>
 
-                {categories.map((cat) => (
-                  <View key={cat.id} style={s.catRow}>
-                    <View style={[s.categoryDot, { backgroundColor: cat.color }]} />
-                    <Text style={[s.catRowName, { color: colors.text }]}>{cat.name}</Text>
-                    {cat.isDefault
-                      ? <Text style={[s.defaultBadge, { color: colors.textSecondary }]}>Default</Text>
-                      : <TouchableOpacity onPress={() => deleteCategory(cat.id)}>
-                          <Text style={{ color: colors.error }}>Delete</Text>
+                {categories.map((cat) => {
+                  const isPickingColor = selectedCatForColor === cat.id;
+                  return (
+                    <View key={cat.id} style={{ marginBottom: 12 }}>
+                      <View style={s.catRow}>
+                        <TouchableOpacity
+                          style={[
+                            s.categoryDot,
+                            {
+                              backgroundColor: cat.color,
+                              width: 26,
+                              height: 26,
+                              borderRadius: 13,
+                              borderWidth: isPickingColor ? 3 : 0,
+                              borderColor: colors.text,
+                            },
+                          ]}
+                          onPress={() => setSelectedCatForColor(isPickingColor ? null : cat.id)}
+                        />
+                        <Text style={[s.catRowName, { color: colors.text }]}>{cat.name}</Text>
+                        <TouchableOpacity
+                          onPress={() => setSelectedCatForColor(isPickingColor ? null : cat.id)}
+                          style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+                        >
+                          <Text style={{ fontSize: 13, color: colors.primary, fontWeight: '600' }}>
+                            {isPickingColor ? 'Done' : 'Change Color'}
+                          </Text>
                         </TouchableOpacity>
-                    }
-                  </View>
-                ))}
+                        {!cat.isDefault && (
+                          <TouchableOpacity onPress={() => deleteCategory(cat.id)} style={{ padding: 4 }}>
+                            <Text style={{ color: colors.error, fontWeight: '600' }}>Delete</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+
+                      {/* Inline Color Palette Swatches */}
+                      {isPickingColor && (
+                        <View style={{ marginTop: 8, paddingLeft: 34 }}>
+                          <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6 }}>
+                            Tap a color swatch for {cat.name}:
+                          </Text>
+                          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                            {ROUTINE_COLORS.map((c) => (
+                              <TouchableOpacity
+                                key={c}
+                                onPress={() => updateCategory(cat.id, { color: c })}
+                                style={[
+                                  s.colorSwatch,
+                                  {
+                                    backgroundColor: c,
+                                    borderWidth: cat.color === c ? 3 : 0,
+                                    borderColor: colors.text,
+                                  },
+                                ]}
+                              />
+                            ))}
+                          </ScrollView>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
 
                 <Text style={[s.addCatLabel, { color: colors.text }]}>Add New Category</Text>
                 <TextInput
@@ -432,7 +623,7 @@ function makeStyles(colors: any) {
     goalRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 10 },
     weeklyGoalRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 8 },
     checkbox: {
-      width: 22, height: 22, borderRadius: 5,
+      width: 22, height: 22, borderRadius: 6,
       borderWidth: 2, borderColor: colors.border,
       alignItems: 'center', justifyContent: 'center',
     },
@@ -440,8 +631,9 @@ function makeStyles(colors: any) {
     checkmark: { color: '#fff', fontWeight: '800', fontSize: 13 },
     goalText: { flex: 1, fontSize: 15, color: colors.text },
     goalTextDone: { textDecorationLine: 'line-through', color: colors.textSecondary },
-    deleteBtn: { padding: 4 },
+    deleteBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
     deleteBtnText: { color: colors.error, fontWeight: '700', fontSize: 15 },
+    actionIconBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
     addSubBtn: { paddingHorizontal: 6 },
     addSubBtnText: { fontSize: 12, fontWeight: '700' },
     goalInput: {
@@ -455,6 +647,31 @@ function makeStyles(colors: any) {
     primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
     manageCatBtn: { borderWidth: 1, borderRadius: 10, padding: 12, alignItems: 'center', marginBottom: 16 },
     manageCatBtnText: { fontWeight: '700', fontSize: 14 },
+    weekSelectorContainer: {
+      flexDirection: 'row',
+      backgroundColor: colors.border + '50',
+      borderRadius: 10,
+      padding: 4,
+      marginBottom: 16,
+      gap: 4,
+    },
+    weekSelectorBtn: {
+      flex: 1,
+      paddingVertical: 8,
+      alignItems: 'center',
+      borderRadius: 8,
+    },
+    weekSelectorBtnActive: {
+      backgroundColor: colors.primary,
+    },
+    weekSelectorText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    weekSelectorTextActive: {
+      color: '#FFFFFF',
+    },
     categoryCard: {
       backgroundColor: colors.card, borderRadius: 16, padding: 16,
       marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.06,
@@ -500,7 +717,7 @@ function makeStyles(colors: any) {
     modalCancel: { fontSize: 15, fontWeight: '600', padding: 8 },
     modalConfirm: { borderRadius: 10, paddingVertical: 10, paddingHorizontal: 20 },
     modalConfirmText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-    catRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 8 },
+    catRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 10 },
     catRowName: { flex: 1, fontSize: 15, fontWeight: '600' },
     defaultBadge: { fontSize: 12 },
     addCatLabel: { fontSize: 14, fontWeight: '600', marginTop: 16, marginBottom: 8 },

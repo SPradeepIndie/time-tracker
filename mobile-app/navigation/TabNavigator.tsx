@@ -1,9 +1,11 @@
 import React from 'react';
 import { Text } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { PlatformPressable } from '@react-navigation/elements';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MainTabParamList } from './types';
 import { useTheme } from '../context/ThemeContext';
+import { AppIcon } from '../components/ui/AppIcon';
 import HomeScreen from '../screens/home/HomeScreen';
 import GoalsScreen from '../screens/goals/GoalsScreen';
 import RoutinesScreen from '../screens/routines/RoutinesScreen';
@@ -24,6 +26,16 @@ export const TabNavigator: React.FC = () => {
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
+        tabBarButton: (props) => (
+          <PlatformPressable
+            {...props}
+            android_ripple={{
+              borderless: true,
+              radius: 20,
+              color: colors.primary + '25',
+            }}
+          />
+        ),
         tabBarStyle: {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
@@ -44,7 +56,9 @@ export const TabNavigator: React.FC = () => {
         name="Tasks"
         component={HomeScreen}
         options={{
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20 }}>📝</Text>,
+          tabBarIcon: ({ color, focused }) => (
+            <AppIcon name={focused ? 'checkbox' : 'checkbox-outline'} size={22} color={color} />
+          ),
           tabBarLabel: 'Tasks',
         }}
       />
@@ -52,7 +66,9 @@ export const TabNavigator: React.FC = () => {
         name="Goals"
         component={GoalsScreen}
         options={{
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20 }}>🎯</Text>,
+          tabBarIcon: ({ color, focused }) => (
+            <AppIcon name={focused ? 'flag' : 'flag-outline'} size={22} color={color} />
+          ),
           tabBarLabel: 'Goals',
         }}
       />
@@ -60,7 +76,9 @@ export const TabNavigator: React.FC = () => {
         name="Routines"
         component={RoutinesScreen}
         options={{
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20 }}>🔄</Text>,
+          tabBarIcon: ({ color, focused }) => (
+            <AppIcon name="repeat" size={22} color={color} />
+          ),
           tabBarLabel: 'Routines',
         }}
       />
@@ -68,7 +86,9 @@ export const TabNavigator: React.FC = () => {
         name="Analytics"
         component={AnalyticsScreen}
         options={{
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20 }}>📊</Text>,
+          tabBarIcon: ({ color, focused }) => (
+            <AppIcon name={focused ? 'bar-chart' : 'bar-chart-outline'} size={22} color={color} />
+          ),
           tabBarLabel: 'Analytics',
         }}
       />
@@ -76,7 +96,9 @@ export const TabNavigator: React.FC = () => {
         name="Settings"
         component={SettingsScreen}
         options={{
-          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20 }}>⚙️</Text>,
+          tabBarIcon: ({ color, focused }) => (
+            <AppIcon name={focused ? 'settings' : 'settings-outline'} size={22} color={color} />
+          ),
           tabBarLabel: 'Settings',
         }}
       />

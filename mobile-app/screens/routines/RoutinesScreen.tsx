@@ -13,7 +13,10 @@ import { SafeAreaView } from '../../components/layout/SafeAreaView';
 import { useTheme } from '../../context/ThemeContext';
 import { useRoutineContext } from '../../context/RoutineContext';
 import { RoutinesScreenNavigationProp } from '../../navigation/types';
+import { AppIcon } from '../../components/ui/AppIcon';
 import { Routine, SubActivity, RoutineReminder, RoutineActivityLog, ROUTINE_COLORS } from '../../types/Routine';
+
+import { getAppTodayDateString } from '../../utils/dateUtils';
 
 interface Props { navigation: RoutinesScreenNavigationProp; }
 
@@ -22,12 +25,12 @@ export default function RoutinesScreen({ navigation }: Props) {
   const {
     routines, isLoading,
     addRoutine, updateRoutine, deleteRoutine,
-    getSubActivities, addSubActivity, deleteSubActivity,
+    getSubActivities, addSubActivity, updateSubActivity, deleteSubActivity,
     getReminders, addReminder, toggleReminderEnabled, deleteReminder,
     getDailyLogs, toggleActivityLog,
   } = useRoutineContext();
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getAppTodayDateString();
 
   // Per-routine data (loaded on expand)
   const [subActivitiesMap, setSubActivitiesMap] = useState<Record<string, SubActivity[]>>({});
@@ -37,15 +40,20 @@ export default function RoutinesScreen({ navigation }: Props) {
 
   // Modals
   const [createRoutineModal, setCreateRoutineModal] = useState(false);
+  const [editRoutineModal, setEditRoutineModal] = useState(false);
   const [reminderModal, setReminderModal] = useState(false);
   const [addActivityModal, setAddActivityModal] = useState(false);
+  const [editActivityModal, setEditActivityModal] = useState(false);
   const [activeRoutineId, setActiveRoutineId] = useState<string>('');
 
   // Form state
   const [routineName, setRoutineName] = useState('');
   const [routineDesc, setRoutineDesc] = useState('');
   const [routineColor, setRoutineColor] = useState(ROUTINE_COLORS[0]);
+  const [editRoutineId, setEditRoutineId] = useState('');
   const [newActivity, setNewActivity] = useState('');
+  const [editActivityId, setEditActivityId] = useState('');
+  const [editActivityText, setEditActivityText] = useState('');
   const [reminderHour, setReminderHour] = useState('09');
   const [reminderMinute, setReminderMinute] = useState('00');
 
@@ -61,6 +69,42 @@ export default function RoutinesScreen({ navigation }: Props) {
     setRemindersMap((p) => ({ ...p, [routineId]: rems }));
     setLogsMap((p) => ({ ...p, [routineId]: logs }));
   }, [getSubActivities, getReminders, getDailyLogs, today]);
+
+  // Instant Progress Fill: Prefetch sub-activities and today's logs for all routines on mount
+  useEffect(() => {
+    let active = true;
+    const prefetchAll = async () => {
+      const subMap: Record<string, SubActivity[]> = {};
+      const remMap: Record<string, RoutineReminder[]> = {};
+      const logMap: Record<string, RoutineActivityLog[]> = {};
+
+      await Promise.all(
+        routines.map(async (r) => {
+          const [acts, rems] = await Promise.all([
+            getSubActivities(r.id),
+            getReminders(r.id),
+          ]);
+          const logs = await getDailyLogs(r.id, acts, today);
+          subMap[r.id] = acts;
+          remMap[r.id] = rems;
+          logMap[r.id] = logs;
+        })
+      );
+
+      if (active) {
+        setSubActivitiesMap(subMap);
+        setRemindersMap(remMap);
+        setLogsMap(logMap);
+      }
+    };
+
+    if (routines.length > 0) {
+      prefetchAll();
+    }
+    return () => {
+      active = false;
+    };
+  }, [routines, getSubActivities, getReminders, getDailyLogs, today]);
 
   const handleExpandRoutine = useCallback(async (routineId: string) => {
     if (expandedRoutineId === routineId) {
@@ -80,6 +124,24 @@ export default function RoutinesScreen({ navigation }: Props) {
     setCreateRoutineModal(false);
   }, [routineName, routineDesc, routineColor, addRoutine]);
 
+  const handleStartEditRoutine = (routine: Routine) => {
+    setEditRoutineId(routine.id);
+    setRoutineName(routine.name);
+    setRoutineDesc(routine.description || '');
+    setRoutineColor(routine.color);
+    setEditRoutineModal(true);
+  };
+
+  const handleSaveEditRoutine = async () => {
+    if (!routineName.trim() || !editRoutineId) return;
+    await updateRoutine(editRoutineId, {
+      name: routineName.trim(),
+      description: routineDesc.trim(),
+      color: routineColor,
+    });
+    setEditRoutineModal(false);
+  };
+
   const handleAddActivity = useCallback(async () => {
     if (!newActivity.trim() || !activeRoutineId) return;
     await addSubActivity(activeRoutineId, newActivity.trim());
@@ -87,6 +149,23 @@ export default function RoutinesScreen({ navigation }: Props) {
     setAddActivityModal(false);
     await loadRoutineData(activeRoutineId);
   }, [newActivity, activeRoutineId, addSubActivity, loadRoutineData]);
+
+  const handleStartEditActivity = (act: SubActivity) => {
+    setEditActivityId(act.id);
+    setEditActivityText(act.text);
+    setEditActivityModal(true);
+  };
+
+  const handleSaveEditActivity = async () => {
+    if (!editActivityText.trim() || !editActivityId) return;
+    await updateSubActivity(editActivityId, editActivityText.trim());
+    setEditActivityModal(false);
+    if (activeRoutineId) {
+      await loadRoutineData(activeRoutineId);
+    } else if (expandedRoutineId) {
+      await loadRoutineData(expandedRoutineId);
+    }
+  };
 
   const handleDeleteActivity = useCallback(async (routineId: string, actId: string) => {
     await deleteSubActivity(actId);
@@ -126,30 +205,61 @@ export default function RoutinesScreen({ navigation }: Props) {
     return (
       <View key={routine.id} style={[s.routineCard, { borderLeftColor: routine.color, borderLeftWidth: 4 }]}>
         {/* Header */}
-        <TouchableOpacity style={s.routineHeader} onPress={() => handleExpandRoutine(routine.id)}>
-          <View style={[s.colorBadge, { backgroundColor: routine.color }]} />
-          <View style={{ flex: 1 }}>
-            <Text style={s.routineName}>{routine.name}</Text>
-            {routine.description ? <Text style={s.routineDesc}>{routine.description}</Text> : null}
-          </View>
-          <Text style={s.progressText}>
-            {acts.length > 0 ? `${checked}/${acts.length}` : 'No steps'}
-          </Text>
-          <Text style={s.chevron}>{isExpanded ? '▲' : '▼'}</Text>
-        </TouchableOpacity>
+        <View style={s.routineHeader}>
+          <TouchableOpacity
+            style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 }}
+            onPress={() => handleExpandRoutine(routine.id)}
+          >
+            <View style={[s.colorBadge, { backgroundColor: routine.color }]} />
+            <View style={{ flex: 1, paddingRight: 6 }}>
+              <Text style={s.routineName}>{routine.name}</Text>
+              {routine.description ? <Text style={s.routineDesc}>{routine.description}</Text> : null}
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }}
+            onPress={() => handleStartEditRoutine(routine)}
+          >
+            <AppIcon name="pencil" size={16} color={colors.textSecondary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 4 }}
+            onPress={() => handleExpandRoutine(routine.id)}
+          >
+            <Text style={s.progressText}>
+              {acts.length > 0 ? `${checked}/${acts.length}` : '0/0'}
+            </Text>
+            <AppIcon
+              name={isExpanded ? 'chevron-up' : 'chevron-down'}
+              size={16}
+              color={colors.textSecondary}
+            />
+          </TouchableOpacity>
+        </View>
 
         {/* Progress bar */}
-        {acts.length > 0 && (
-          <View style={s.progressBar}>
-            <View style={[s.progressFill, { width: `${Math.round((checked / acts.length) * 100)}%` as any, backgroundColor: routine.color }]} />
-          </View>
-        )}
+        <View style={s.progressBar}>
+          <View
+            style={[
+              s.progressFill,
+              {
+                width: acts.length > 0 ? `${Math.round((checked / acts.length) * 100)}%` as any : '0%',
+                backgroundColor: routine.color,
+              },
+            ]}
+          />
+        </View>
 
         {/* Expanded content */}
         {isExpanded && (
           <View style={s.expandedContent}>
             {/* Sub-activities checklist */}
-            <Text style={s.subSectionTitle}>✅ Activities</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <AppIcon name="checkbox" size={16} color={routine.color} />
+              <Text style={s.subSectionTitle}>Activities</Text>
+            </View>
             {acts.length === 0 && (
               <Text style={s.emptyText}>No activities yet. Add one below.</Text>
             )}
@@ -162,12 +272,23 @@ export default function RoutinesScreen({ navigation }: Props) {
                     style={[s.checkbox, isChecked && { backgroundColor: routine.color, borderColor: routine.color }]}
                     onPress={() => log && handleToggleLog(routine.id, log.id, isChecked)}
                   >
-                    {isChecked && <Text style={s.checkmark}>✓</Text>}
+                    {isChecked && <AppIcon name="checkmark" size={14} color="#fff" />}
                   </TouchableOpacity>
                   <Text style={[s.activityText, isChecked && s.activityDone]}>{act.text}</Text>
-                  <TouchableOpacity onPress={() => handleDeleteActivity(routine.id, act.id)}>
-                    <Text style={s.deleteText}>✕</Text>
-                  </TouchableOpacity>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <TouchableOpacity
+                      style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }}
+                      onPress={() => { setActiveRoutineId(routine.id); handleStartEditActivity(act); }}
+                    >
+                      <AppIcon name="pencil" size={16} color={colors.textTertiary || '#999'} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }}
+                      onPress={() => handleDeleteActivity(routine.id, act.id)}
+                    >
+                      <AppIcon name="trash" size={16} color={colors.textTertiary || '#999'} />
+                    </TouchableOpacity>
+                  </View>
                 </View>
               );
             })}
@@ -180,7 +301,10 @@ export default function RoutinesScreen({ navigation }: Props) {
             </TouchableOpacity>
 
             {/* Reminder Matrix */}
-            <Text style={[s.subSectionTitle, { marginTop: 16 }]}>⏰ Reminders</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 16, marginBottom: 8 }}>
+              <AppIcon name="time" size={16} color={routine.color} />
+              <Text style={s.subSectionTitle}>Reminders</Text>
+            </View>
             {reminders.length === 0 && <Text style={s.emptyText}>No reminders set.</Text>}
             {reminders.map((rem) => (
               <View key={rem.id} style={s.reminderRow}>
@@ -193,8 +317,11 @@ export default function RoutinesScreen({ navigation }: Props) {
                   trackColor={{ false: colors.border, true: routine.color }}
                   thumbColor={rem.isEnabled ? '#fff' : colors.textSecondary}
                 />
-                <TouchableOpacity onPress={() => deleteReminder(rem)}>
-                  <Text style={s.deleteText}>✕</Text>
+                <TouchableOpacity
+                  style={{ width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }}
+                  onPress={() => deleteReminder(rem)}
+                >
+                  <AppIcon name="trash" size={16} color={colors.textTertiary || '#999'} />
                 </TouchableOpacity>
               </View>
             ))}
@@ -227,7 +354,10 @@ export default function RoutinesScreen({ navigation }: Props) {
       <View style={s.container}>
         {/* Header */}
         <View style={s.header}>
-          <Text style={s.headerTitle}>🔄 Routines</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <AppIcon name="repeat" size={24} color={colors.primary} />
+            <Text style={s.headerTitle}>Routines</Text>
+          </View>
           <TouchableOpacity
             style={[s.createBtn, { backgroundColor: colors.primary }]}
             onPress={() => setCreateRoutineModal(true)}
@@ -240,7 +370,7 @@ export default function RoutinesScreen({ navigation }: Props) {
           <ActivityIndicator style={{ marginTop: 40 }} color={colors.primary} />
         ) : routines.length === 0 ? (
           <View style={s.emptyState}>
-            <Text style={s.emptyStateIcon}>🔄</Text>
+            <AppIcon name="repeat" size={48} color={colors.border} />
             <Text style={s.emptyStateText}>No routines yet.</Text>
             <Text style={s.emptyStateSubtext}>Create one to start tracking your habits.</Text>
           </View>
@@ -300,6 +430,68 @@ export default function RoutinesScreen({ navigation }: Props) {
           </KeyboardAvoidingView>
         </Modal>
 
+        {/* Edit Routine Modal */}
+        <Modal visible={editRoutineModal} transparent animationType="fade">
+          <KeyboardAvoidingView
+            style={s.modalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+              <View style={s.modalBackdrop} />
+            </TouchableWithoutFeedback>
+            <View style={[s.modalCard, { backgroundColor: colors.surface }]}>
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <Text style={[s.modalTitle, { color: colors.text }]}>Edit Routine</Text>
+
+                <Text style={[s.modalLabel, { color: colors.textSecondary }]}>Name</Text>
+                <TextInput
+                  style={[s.modalInput, { borderColor: colors.border, color: colors.text }]}
+                  placeholder="Routine name…"
+                  placeholderTextColor={colors.placeholder}
+                  value={routineName}
+                  onChangeText={setRoutineName}
+                />
+
+                <Text style={[s.modalLabel, { color: colors.textSecondary }]}>Description</Text>
+                <TextInput
+                  style={[s.modalInput, { borderColor: colors.border, color: colors.text }]}
+                  placeholder="Optional description…"
+                  placeholderTextColor={colors.placeholder}
+                  value={routineDesc}
+                  onChangeText={setRoutineDesc}
+                />
+
+                <Text style={[s.modalLabel, { color: colors.textSecondary }]}>Color</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                  {ROUTINE_COLORS.map((c) => (
+                    <TouchableOpacity
+                      key={c}
+                      style={[
+                        s.colorSwatch,
+                        { backgroundColor: c },
+                        routineColor === c && { borderWidth: 3, borderColor: colors.text },
+                      ]}
+                      onPress={() => setRoutineColor(c)}
+                    />
+                  ))}
+                </View>
+
+                <View style={s.modalActions}>
+                  <TouchableOpacity onPress={() => setEditRoutineModal(false)}>
+                    <Text style={[s.modalCancel, { color: colors.textSecondary }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[s.modalConfirm, { backgroundColor: colors.primary }]}
+                    onPress={handleSaveEditRoutine}
+                  >
+                    <Text style={s.modalConfirmText}>Save</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+
         {/* Add Activity Modal */}
         <Modal visible={addActivityModal} transparent animationType="fade">
           <KeyboardAvoidingView
@@ -328,6 +520,40 @@ export default function RoutinesScreen({ navigation }: Props) {
                   onPress={handleAddActivity}
                 >
                   <Text style={s.modalConfirmText}>Add</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+
+        {/* Edit Activity Modal */}
+        <Modal visible={editActivityModal} transparent animationType="fade">
+          <KeyboardAvoidingView
+            style={s.modalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+              <View style={s.modalBackdrop} />
+            </TouchableWithoutFeedback>
+            <View style={[s.modalCard, { backgroundColor: colors.surface }]}>
+              <Text style={[s.modalTitle, { color: colors.text }]}>Edit Activity</Text>
+              <TextInput
+                style={[s.modalInput, { borderColor: colors.border, color: colors.text }]}
+                placeholder="Activity description…"
+                placeholderTextColor={colors.placeholder}
+                value={editActivityText}
+                onChangeText={setEditActivityText}
+                autoFocus
+              />
+              <View style={s.modalActions}>
+                <TouchableOpacity onPress={() => { setEditActivityModal(false); setEditActivityText(''); }}>
+                  <Text style={[s.modalCancel, { color: colors.textSecondary }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.modalConfirm, { backgroundColor: colors.primary }]}
+                  onPress={handleSaveEditActivity}
+                >
+                  <Text style={s.modalConfirmText}>Save</Text>
                 </TouchableOpacity>
               </View>
             </View>

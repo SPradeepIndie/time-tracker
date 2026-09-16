@@ -25,9 +25,10 @@ import { SettingsScreenNavigationProp } from '../../navigation/types';
 import { SafeAreaView } from '../../components/layout/SafeAreaView';
 import { Header } from '../../components/layout/Header';
 import { Card } from '../../components/ui/Card';
+import { AppIcon } from '../../components/ui/AppIcon';
 import SyncStatusBadge from '../../components/sync/SyncStatusBadge';
 import { useTrackContext } from '../../context/TrackContext';
-import { getStorageStats, formatBytes } from '../../services/storage/db';
+import { getStorageStats, formatBytes, StorageDetailStats } from '../../services/storage/db';
 
 interface Props {
   navigation: SettingsScreenNavigationProp;
@@ -36,7 +37,7 @@ interface Props {
 const PIN_HASH_KEY = 'app_pin_hash';
 
 export default function SettingsScreen({ navigation }: Props) {
-  const { colors } = useTheme();
+  const { colors, isDark, toggleTheme } = useTheme();
   const {
     syncEnabled,
     syncStatus,
@@ -49,8 +50,12 @@ export default function SettingsScreen({ navigation }: Props) {
 
   const { tracks, clearAllData } = useTrackContext();
   const [syncToggling, setSyncToggling] = useState(false);
-  const [storageStats, setStorageStats] = useState<{ taskCount: number; dbSizeBytes: number }>({
+  const [storageStats, setStorageStats] = useState<StorageDetailStats>({
     taskCount: tracks.length,
+    dailyGoalCount: 0,
+    weeklyGoalCount: 0,
+    routineCount: 0,
+    routineLogCount: 0,
     dbSizeBytes: 0,
   });
 
@@ -59,10 +64,7 @@ export default function SettingsScreen({ navigation }: Props) {
     (async () => {
       const stats = await getStorageStats();
       if (mounted) {
-        setStorageStats({
-          taskCount: tracks.length || stats.taskCount,
-          dbSizeBytes: stats.dbSizeBytes,
-        });
+        setStorageStats(stats);
       }
     })();
     return () => {
@@ -160,6 +162,32 @@ export default function SettingsScreen({ navigation }: Props) {
 
 
 
+  const [taskSortBy, setTaskSortBy] = useState<'priority' | 'status'>('priority');
+  const [taskSortOrder, setTaskSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  useEffect(() => {
+    (async () => {
+      const savedSortBy = await SecureStore.getItemAsync('task_sort_by');
+      const savedSortOrder = await SecureStore.getItemAsync('task_sort_order');
+      if (savedSortBy === 'priority' || savedSortBy === 'status') {
+        setTaskSortBy(savedSortBy);
+      }
+      if (savedSortOrder === 'asc' || savedSortOrder === 'desc') {
+        setTaskSortOrder(savedSortOrder);
+      }
+    })();
+  }, []);
+
+  const handleUpdateSortBy = async (sortBy: 'priority' | 'status') => {
+    setTaskSortBy(sortBy);
+    await SecureStore.setItemAsync('task_sort_by', sortBy);
+  };
+
+  const handleUpdateSortOrder = async (sortOrder: 'asc' | 'desc') => {
+    setTaskSortOrder(sortOrder);
+    await SecureStore.setItemAsync('task_sort_order', sortOrder);
+  };
+
   const s = makeStyles(colors);
 
   return (
@@ -167,30 +195,135 @@ export default function SettingsScreen({ navigation }: Props) {
       <View style={s.container}>
         <Header title="Settings" right={<SyncStatusBadge />} />
 
-        <ScrollView style={s.content} contentContainerStyle={{ paddingBottom: 50 }}>
+        <ScrollView style={s.content} contentContainerStyle={{ paddingBottom: 60 }}>
 
-          {/* ── Storage & Space ───────────────────────────────────────── */}
-          <Text style={s.sectionTitle}>💾  Task Storage</Text>
+          {/* ── Appearance (Dark / Light Theme) ───────────────────────── */}
+          <View style={s.sectionHeader}>
+            <AppIcon name="moon" size={16} color={colors.textTertiary} />
+            <Text style={s.sectionTitle}>Appearance</Text>
+          </View>
+          <Card>
+            <View style={[s.row, s.rowLast]}>
+              <View style={s.rowLeft}>
+                <Text style={s.rowLabel}>Dark Mode</Text>
+                <Text style={s.rowDesc}>
+                  {isDark ? 'Dark theme active' : 'Light theme active'}
+                </Text>
+              </View>
+              <View style={s.toggleContainer}>
+                <Switch
+                  value={isDark}
+                  onValueChange={toggleTheme}
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                  thumbColor={colors.surface}
+                />
+              </View>
+            </View>
+          </Card>
+
+          {/* ── Task Display & Sorting ───────────────────────────────── */}
+          <View style={s.sectionHeader}>
+            <AppIcon name="funnel" size={16} color={colors.textTertiary} />
+            <Text style={s.sectionTitle}>Task Sorting</Text>
+          </View>
           <Card>
             <View style={s.row}>
               <View style={s.rowLeft}>
-                <Text style={s.rowLabel}>Tasks Stored</Text>
-                <Text style={s.rowDesc}>Total local task records</Text>
+                <Text style={s.rowLabel}>Sort Field</Text>
+                <Text style={s.rowDesc}>Group and order tasks by</Text>
               </View>
-              <Text style={s.statBadge}>{storageStats.taskCount} tasks</Text>
+              <View style={s.segmentedRow}>
+                <TouchableOpacity
+                  style={[s.segmentBtn, taskSortBy === 'priority' && s.segmentBtnActive]}
+                  onPress={() => handleUpdateSortBy('priority')}
+                >
+                  <Text style={[s.segmentText, taskSortBy === 'priority' && s.segmentTextActive]}>Priority</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.segmentBtn, taskSortBy === 'status' && s.segmentBtnActive]}
+                  onPress={() => handleUpdateSortBy('status')}
+                >
+                  <Text style={[s.segmentText, taskSortBy === 'status' && s.segmentTextActive]}>Status</Text>
+                </TouchableOpacity>
+              </View>
             </View>
             <View style={s.divider} />
             <View style={[s.row, s.rowLast]}>
               <View style={s.rowLeft}>
-                <Text style={s.rowLabel}>Space Used</Text>
-                <Text style={s.rowDesc}>SQLite database storage footprint</Text>
+                <Text style={s.rowLabel}>Direction</Text>
+                <Text style={s.rowDesc}>Ordering direction</Text>
               </View>
-              <Text style={s.statBadge}>{formatBytes(storageStats.dbSizeBytes)}</Text>
+              <View style={s.segmentedRow}>
+                <TouchableOpacity
+                  style={[s.segmentBtn, taskSortOrder === 'asc' && s.segmentBtnActive]}
+                  onPress={() => handleUpdateSortOrder('asc')}
+                >
+                  <Text style={[s.segmentText, taskSortOrder === 'asc' && s.segmentTextActive]}>Ascending</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.segmentBtn, taskSortOrder === 'desc' && s.segmentBtnActive]}
+                  onPress={() => handleUpdateSortOrder('desc')}
+                >
+                  <Text style={[s.segmentText, taskSortOrder === 'desc' && s.segmentTextActive]}>Descending</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Card>
+
+          {/* ── Storage Analysis ──────────────────────────────────────── */}
+          <View style={s.sectionHeader}>
+            <AppIcon name="server" size={16} color={colors.textTertiary} />
+            <Text style={s.sectionTitle}>Storage Analysis</Text>
+          </View>
+          <Card>
+            <View style={s.row}>
+              <View style={s.rowLeft}>
+                <Text style={s.rowLabel}>Tasks Stored</Text>
+                <Text style={s.rowDesc}>Local task records</Text>
+              </View>
+              <Text style={s.statBadge}>{storageStats.taskCount}</Text>
+            </View>
+            <View style={s.divider} />
+            <View style={s.row}>
+              <View style={s.rowLeft}>
+                <Text style={s.rowLabel}>Daily Goals</Text>
+                <Text style={s.rowDesc}>Active & historical daily plans</Text>
+              </View>
+              <Text style={s.statBadge}>{storageStats.dailyGoalCount}</Text>
+            </View>
+            <View style={s.divider} />
+            <View style={s.row}>
+              <View style={s.rowLeft}>
+                <Text style={s.rowLabel}>Weekly Goals</Text>
+                <Text style={s.rowDesc}>3-tier weekly goal hierarchy</Text>
+              </View>
+              <Text style={s.statBadge}>{storageStats.weeklyGoalCount}</Text>
+            </View>
+            <View style={s.divider} />
+            <View style={s.row}>
+              <View style={s.rowLeft}>
+                <Text style={s.rowLabel}>Routines & Activities</Text>
+                <Text style={s.rowDesc}>Defined routines / daily logs</Text>
+              </View>
+              <Text style={s.statBadge}>{storageStats.routineCount} / {storageStats.routineLogCount} logs</Text>
+            </View>
+            <View style={s.divider} />
+            <View style={[s.row, s.rowLast]}>
+              <View style={s.rowLeft}>
+                <Text style={s.rowLabel}>SQLite Database Footprint</Text>
+                <Text style={s.rowDesc}>Total encrypted local storage space</Text>
+              </View>
+              <Text style={[s.statBadge, { color: colors.info, backgroundColor: colors.info + '18' }]}>
+                {formatBytes(storageStats.dbSizeBytes)}
+              </Text>
             </View>
           </Card>
 
           {/* ── Sync ─────────────────────────────────────────────────── */}
-          <Text style={s.sectionTitle}>🔄  Cloud Sync</Text>
+          <View style={s.sectionHeader}>
+            <AppIcon name="cloud" size={16} color={colors.textTertiary} />
+            <Text style={s.sectionTitle}>Cloud Sync</Text>
+          </View>
           <Card>
             <View style={[s.row, !syncEnabled && s.rowLast]}>
               <View style={s.rowLeft}>
@@ -236,49 +369,58 @@ export default function SettingsScreen({ navigation }: Props) {
           </Card>
 
           {/* ── Security ──────────────────────────────────────────── */}
-          <Text style={s.sectionTitle}>🔐  Security</Text>
+          <View style={s.sectionHeader}>
+            <AppIcon name="lock-closed" size={16} color={colors.textTertiary} />
+            <Text style={s.sectionTitle}>Security</Text>
+          </View>
           <Card>
             <TouchableOpacity style={[s.row, s.rowLast]} onPress={handleChangePin}>
               <View style={s.rowLeft}>
                 <Text style={s.rowLabel}>Change PIN</Text>
                 <Text style={s.rowDesc}>Reset your 4-digit app lock</Text>
               </View>
-              <Text style={s.chevron}>›</Text>
+              <AppIcon name="chevron-forward" size={18} color={colors.textTertiary} />
             </TouchableOpacity>
           </Card>
 
-          {/* ── Data Management ───────────────────────────────────── */}
-          <Text style={s.sectionTitle}>🗑️  Data Management</Text>
-          <Card>
+          {/* ── Danger Zone ───────────────────────────────────────── */}
+          <View style={s.sectionHeader}>
+            <AppIcon name="warning" size={16} color={colors.priorityHigh} />
+            <Text style={[s.sectionTitle, { color: colors.priorityHigh }]}>Danger Zone</Text>
+          </View>
+          <Card style={{ borderColor: colors.priorityHigh + '40', borderWidth: 1 }}>
             <TouchableOpacity style={s.row} onPress={handleClearTracks}>
               <View style={s.rowLeft}>
                 <Text style={[s.rowLabel, { color: colors.priorityHigh }]}>Clear All Tasks</Text>
-                <Text style={s.rowDesc}>Delete all tasks and tags from this device</Text>
+                <Text style={s.rowDesc}>Permanently delete all tasks and tags</Text>
               </View>
-              <Text style={s.chevron}>›</Text>
+              <AppIcon name="chevron-forward" size={18} color={colors.priorityHigh} />
             </TouchableOpacity>
             <View style={s.divider} />
             <TouchableOpacity style={[s.row, s.rowLast]} onPress={handleFactoryReset}>
               <View style={s.rowLeft}>
-                <Text style={[s.rowLabel, { color: colors.priorityHigh }]}>Factory Reset</Text>
-                <Text style={s.rowDesc}>Erase all data, PIN, and encryption key</Text>
+                <Text style={[s.rowLabel, { color: colors.priorityHigh, fontWeight: '700' }]}>Complete Factory Reset</Text>
+                <Text style={s.rowDesc}>Wipe local database, secure-store PIN, and encryption key</Text>
               </View>
-              <Text style={s.chevron}>›</Text>
+              <AppIcon name="chevron-forward" size={18} color={colors.priorityHigh} />
             </TouchableOpacity>
           </Card>
 
           {/* ── About ────────────────────────────────────────────── */}
-          <Text style={s.sectionTitle}>ℹ️  About & Appearance</Text>
+          <View style={s.sectionHeader}>
+            <AppIcon name="information-circle" size={16} color={colors.textTertiary} />
+            <Text style={s.sectionTitle}>About</Text>
+          </View>
           <Card>
             <TouchableOpacity
               style={[s.row, s.rowLast]}
               onPress={() => navigation.navigate('Info')}
             >
               <View style={s.rowLeft}>
-                <Text style={[s.rowLabel, { color: colors.primary }]}>App Information & Theme</Text>
-                <Text style={s.rowDesc}>Version, guides, and Dark Mode appearance</Text>
+                <Text style={[s.rowLabel, { color: colors.primary }]}>App Information</Text>
+                <Text style={s.rowDesc}>Time Tracker v1.0.0 • Architecture & Guides</Text>
               </View>
-              <Text style={s.chevron}>›</Text>
+              <AppIcon name="chevron-forward" size={18} color={colors.textTertiary} />
             </TouchableOpacity>
           </Card>
 
@@ -292,14 +434,19 @@ function makeStyles(colors: any) {
   return StyleSheet.create({
     container: { flex: 1 },
     content: { padding: 16 },
+    sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginBottom: 10,
+      marginTop: 20,
+    },
     sectionTitle: {
       fontSize: 13,
       fontWeight: '600',
       color: colors.textTertiary,
       textTransform: 'uppercase',
       letterSpacing: 0.5,
-      marginBottom: 10,
-      marginTop: 20,
     },
     row: {
       flexDirection: 'row',
@@ -312,9 +459,9 @@ function makeStyles(colors: any) {
     rowLast: {
       borderBottomWidth: 0,
     },
-    rowLeft: { flex: 1 },
+    rowLeft: { flex: 1, paddingRight: 8 },
     rowLabel: {
-      fontSize: 16,
+      fontSize: 15,
       fontWeight: '500',
       color: colors.text,
       marginBottom: 2,
@@ -323,21 +470,40 @@ function makeStyles(colors: any) {
       color: colors.textTertiary,
     },
     rowDesc: {
-      fontSize: 13,
+      fontSize: 12,
       color: colors.textSecondary,
     },
     statBadge: {
-      fontSize: 14,
+      fontSize: 13,
       fontWeight: '700',
       color: colors.primary,
       backgroundColor: colors.primary + '18',
-      paddingHorizontal: 10,
+      paddingHorizontal: 8,
       paddingVertical: 4,
-      borderRadius: 8,
+      borderRadius: 6,
     },
-    chevron: {
-      fontSize: 20,
-      color: colors.textTertiary,
+    segmentedRow: {
+      flexDirection: 'row',
+      backgroundColor: colors.border + '50',
+      borderRadius: 8,
+      padding: 2,
+      gap: 4,
+    },
+    segmentBtn: {
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 6,
+    },
+    segmentBtnActive: {
+      backgroundColor: colors.primary,
+    },
+    segmentText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    segmentTextActive: {
+      color: '#FFFFFF',
     },
     divider: {
       height: 1,

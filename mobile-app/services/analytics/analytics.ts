@@ -16,6 +16,7 @@
 import { SQLiteDatabase } from 'expo-sqlite';
 import { queryGetDailyGoalStats, queryGetWeeklyGoalStats, queryGetAllCategories } from '../storage/goalQueries';
 import { queryGetRoutineStatsForDate } from '../storage/routineQueries';
+import { getCurrentWeekDateRange } from '../../utils/dateUtils';
 
 // ─── Weights for Overall Progress ─────────────────────────────────────────────
 export const ANALYTICS_WEIGHTS = {
@@ -155,12 +156,10 @@ export async function calculateWeeklyAnalytics(
     })
   );
 
-  // 7-day rolling history
+  // Monday to Sunday calendar week history (replaces rolling 7 days)
+  const { days } = getCurrentWeekDateRange();
   const dailyHistory: DailyAnalytics[] = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().split('T')[0];
+  for (const dateStr of days) {
     dailyHistory.push(await calculateDailyAnalytics(db, dateStr));
   }
 
