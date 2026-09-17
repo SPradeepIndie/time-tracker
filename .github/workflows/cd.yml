@@ -1,6 +1,9 @@
 name: CD Orchestrator
 
 on:
+  push:
+    branches:
+      - pipeline
   workflow_dispatch:
     inputs:
       version:
@@ -85,10 +88,16 @@ jobs:
       - name: Determine Version Metadata
         id: meta
         run: |
-          VER="${{ github.event.inputs.version }}"
-          CODE="${{ github.event.inputs.version_code }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VER="${{ github.event.inputs.version }}"
+            CODE="${{ github.event.inputs.version_code }}"
+            TITLE="${{ github.event.inputs.release_title }}"
+          else
+            VER=$(node -p "require('./mobile-app/app.json').expo.version")
+            CODE="${{ github.run_number }}"
+            TITLE="Time Tracker v${VER} (Build #${{ github.run_number }})"
+          fi
           TAG="v${VER}"
-          TITLE="${{ github.event.inputs.release_title }}"
           if [ -z "$TITLE" ]; then
             TITLE="Time Tracker ${TAG}"
           fi
