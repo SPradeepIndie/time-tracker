@@ -76,6 +76,8 @@ jobs:
     if: |
       always() &&
       (needs.db-migration.result == 'success' || needs.db-migration.result == 'skipped')
+    env:
+      NODE_OPTIONS: "--max-old-space-size=4096"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -144,9 +146,16 @@ jobs:
         working-directory: mobile-app
         run: npx expo prebuild --platform android --no-install
 
-      - name: Configure Gradle properties
+      - name: Configure Gradle & Wrapper
         run: |
+          # Pin Gradle wrapper to 8.14.3 to prevent Gradle 9 incompatibility
+          sed -i 's/gradle-.*-bin.zip/gradle-8.14.3-bin.zip/' mobile-app/android/gradle/wrapper/gradle-wrapper.properties || true
+          
+          # Ensure Hermes compiler has executable permissions on Linux runner
+          chmod -R +x mobile-app/node_modules/hermes-compiler/hermesc/ || true
           chmod +x mobile-app/android/gradlew
+
+          # Append performance and network flags
           cat << 'EOF' >> mobile-app/android/gradle.properties
           org.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=512m -Djava.net.preferIPv4Stack=true
           org.gradle.parallel=false
@@ -155,11 +164,11 @@ jobs:
 
       - name: Build Android Standalone APK (Free Direct Install)
         working-directory: mobile-app/android
-        run: ./gradlew assembleRelease --no-daemon -Dorg.gradle.java.home=$JAVA_HOME
+        run: ./gradlew assembleRelease --no-daemon --stacktrace -Dorg.gradle.java.home=$JAVA_HOME
 
       - name: Build Android App Bundle (Google Play AAB)
         working-directory: mobile-app/android
-        run: ./gradlew bundleRelease --no-daemon -Dorg.gradle.java.home=$JAVA_HOME
+        run: ./gradlew bundleRelease --no-daemon --stacktrace -Dorg.gradle.java.home=$JAVA_HOME
 
       - name: Prepare Release Assets
         run: |
