@@ -164,11 +164,12 @@ jobs:
           chmod -R +x mobile-app/node_modules/hermes-compiler/hermesc/ || true
           chmod +x mobile-app/android/gradlew
 
-          # Append performance and network flags
+          # Append performance, network, and autolinking bug-fix flags
           cat << 'EOF' >> mobile-app/android/gradle.properties
           org.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=512m -Djava.net.preferIPv4Stack=true
           org.gradle.parallel=false
           org.gradle.java.installations.auto-download=false
+          expo.inlineModules.watchedDirectories=[]
           EOF
 
       - name: Build Android Standalone APK (Free Direct Install)
