@@ -140,6 +140,19 @@ jobs:
             fs.writeFileSync(file, JSON.stringify(json, null, 2));
           "
 
+      - name: Generate Android native project (Expo Prebuild)
+        working-directory: mobile-app
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Configure Gradle properties
+        run: |
+          chmod +x mobile-app/android/gradlew
+          cat << 'EOF' >> mobile-app/android/gradle.properties
+          org.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=512m -Djava.net.preferIPv4Stack=true
+          org.gradle.parallel=false
+          org.gradle.java.installations.auto-download=false
+          EOF
+
       - name: Build Android Standalone APK (Free Direct Install)
         working-directory: mobile-app/android
         run: ./gradlew assembleRelease --no-daemon -Dorg.gradle.java.home=$JAVA_HOME
