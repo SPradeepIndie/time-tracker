@@ -6,7 +6,10 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  ToastAndroid,
+  Platform,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { TrackDetailsScreenNavigationProp, TrackDetailsScreenRouteProp } from '../../navigation/types';
 import { useTrackContext } from '../../context/TrackContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -19,7 +22,7 @@ interface Props {
 
 export default function TrackDetailsScreen({ navigation, route }: Props) {
   const { id } = route.params;
-  const { getTrackById, deleteTrack, addTrack } = useTrackContext();
+  const { getTrackById, deleteTrack } = useTrackContext();
   const { colors } = useTheme();
 
   const track = getTrackById(id);
@@ -83,27 +86,13 @@ export default function TrackDetailsScreen({ navigation, route }: Props) {
     });
   };
 
-  const handleDuplicate = async () => {
-    try {
-      await addTrack({
-        title: `${track.title} (Copy)`,
-        description: track.description,
-        status: track.taskType === 'allocated' ? 'time-allocated' : 'created',
-        priority: track.priority,
-        taskType: track.taskType,
-        timeInputMode: track.timeInputMode,
-        allocatedStartTime: track.allocatedStartTime,
-        allocatedEndTime: track.allocatedEndTime,
-        blockMultiplier: track.blockMultiplier,
-        durationMinutes: track.durationMinutes,
-        startTime: track.startTime || new Date(),
-        tags: track.tags,
-      });
-      Alert.alert('Task Duplicated', 'Task was copied successfully.', [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
-    } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Failed to duplicate task.');
+  const handleCopy = () => {
+    if (!track) return;
+    Clipboard.setStringAsync(track.title);
+    if (Platform.OS === 'android') {
+      ToastAndroid.show('Copied to clipboard', ToastAndroid.SHORT);
+    } else {
+      Alert.alert('Copied', 'Task title copied to clipboard');
     }
   };
 
@@ -172,23 +161,23 @@ export default function TrackDetailsScreen({ navigation, route }: Props) {
       <View style={styles.actions}>
         <TouchableOpacity
           style={[styles.button, styles.duplicateButton, { flexDirection: 'row', justifyContent: 'center', gap: 8 }]}
-          onPress={handleDuplicate}
+          onPress={handleCopy}
         >
-          <AppIcon name="copy-outline" size={18} color="#fff" />
-          <Text style={styles.editButtonText}>Duplicate Task</Text>
+          <AppIcon name="copy" size={18} color="#fff" />
+          <Text style={styles.editButtonText}>Copy Title</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.button, styles.editButton, { flexDirection: 'row', justifyContent: 'center', gap: 8 }]}
           onPress={() => navigation.navigate('CreateEdit', { id })}
         >
-          <AppIcon name="create-outline" size={18} color="#fff" />
+          <AppIcon name="create" size={18} color="#fff" />
           <Text style={styles.editButtonText}>Edit Track</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.button, styles.deleteButton, { flexDirection: 'row', justifyContent: 'center', gap: 8 }]}
           onPress={handleDelete}
         >
-          <AppIcon name="trash-outline" size={18} color="#fff" />
+          <AppIcon name="trash" size={18} color="#fff" />
           <Text style={styles.deleteButtonText}>Delete Track</Text>
         </TouchableOpacity>
       </View>

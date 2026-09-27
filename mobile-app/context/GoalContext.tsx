@@ -13,6 +13,7 @@ import {
   queryUpdateDailyGoalCompletion,
   queryUpdateDailyGoalText,
   queryDeleteDailyGoal,
+  queryRolloverUncompletedDailyGoals,
   queryGetAllCategories,
   queryCreateCategory,
   queryUpdateCategory,
@@ -22,6 +23,7 @@ import {
   queryUpdateWeeklyGoalCompletion,
   queryUpdateWeeklyGoalText,
   queryDeleteWeeklyGoal,
+  queryRolloverUncompletedWeeklyGoals,
 } from '../services/storage/goalQueries';
 import {
   DailyGoal,
@@ -46,7 +48,6 @@ interface GoalContextValue {
   toggleDailyGoal: (id: string, isCompleted: boolean) => Promise<void>;
   updateDailyGoalText: (id: string, text: string) => Promise<void>;
   deleteDailyGoal: (id: string) => Promise<void>;
-  duplicateDailyGoal: (goal: DailyGoal) => Promise<void>;
 
   // Weekly Goal Categories
   categories: WeeklyGoalCategory[];
@@ -65,7 +66,6 @@ interface GoalContextValue {
   toggleWeeklyGoal: (id: string, isCompleted: boolean) => Promise<void>;
   updateWeeklyGoalText: (id: string, text: string) => Promise<void>;
   deleteWeeklyGoal: (id: string) => Promise<void>;
-  duplicateWeeklyGoal: (goal: WeeklyGoal) => Promise<void>;
 
   isLoading: boolean;
 }
@@ -87,6 +87,7 @@ export function GoalProvider({ children }: { children: React.ReactNode }) {
     const db = await getDatabase();
     const today = getTodayDateString();
     const tomorrow = getTomorrowDateString();
+    await queryRolloverUncompletedDailyGoals(db, today);
     const [tGoals, tmGoals] = await Promise.all([
       queryGetDailyGoalsByDate(db, today),
       queryGetDailyGoalsByDate(db, tomorrow),
@@ -98,13 +99,16 @@ export function GoalProvider({ children }: { children: React.ReactNode }) {
   const loadWeeklyGoals = useCallback(async (targetWeek?: string) => {
     const db = await getDatabase();
     const week = targetWeek || selectedWeekLabel;
+    if (week === currentWeekLabel) {
+      await queryRolloverUncompletedWeeklyGoals(db, currentWeekLabel);
+    }
     const [cats, goals] = await Promise.all([
       queryGetAllCategories(db),
       queryGetWeeklyGoalsByWeek(db, week),
     ]);
     setCategories(cats);
     setWeeklyGoals(goals);
-  }, [selectedWeekLabel]);
+  }, [selectedWeekLabel, currentWeekLabel]);
 
   // Initial load
   useEffect(() => {
@@ -130,10 +134,6 @@ export function GoalProvider({ children }: { children: React.ReactNode }) {
       setTomorrowGoals((prev) => [...prev, newGoal]);
     }
   }, [todayGoals, tomorrowGoals]);
-
-  const duplicateDailyGoal = useCallback(async (goal: DailyGoal) => {
-    await addDailyGoal(goal.text, goal.date);
-  }, [addDailyGoal]);
 
   const toggleDailyGoal = useCallback(async (id: string, isCompleted: boolean) => {
     const db = await getDatabase();
@@ -203,10 +203,6 @@ export function GoalProvider({ children }: { children: React.ReactNode }) {
     setWeeklyGoals((prev) => [...prev, newGoal]);
   }, [weeklyGoals, selectedWeekLabel]);
 
-  const duplicateWeeklyGoal = useCallback(async (goal: WeeklyGoal) => {
-    await addWeeklyGoal(goal.categoryId, goal.text, goal.parentId);
-  }, [addWeeklyGoal]);
-
   const toggleWeeklyGoal = useCallback(async (id: string, isCompleted: boolean) => {
     const db = await getDatabase();
     await queryUpdateWeeklyGoalCompletion(db, id, isCompleted);
@@ -241,10 +237,10 @@ export function GoalProvider({ children }: { children: React.ReactNode }) {
     <GoalContext.Provider
       value={{
         todayGoals, tomorrowGoals, loadDailyGoals,
-        addDailyGoal, toggleDailyGoal, updateDailyGoalText, deleteDailyGoal, duplicateDailyGoal,
+        addDailyGoal, toggleDailyGoal, updateDailyGoalText, deleteDailyGoal,
         categories, addCategory, updateCategory, deleteCategory,
         weeklyGoals, currentWeekLabel, nextWeekLabel, selectedWeekLabel, setSelectedWeekLabel, loadWeeklyGoals,
-        addWeeklyGoal, toggleWeeklyGoal, updateWeeklyGoalText, deleteWeeklyGoal, duplicateWeeklyGoal,
+        addWeeklyGoal, toggleWeeklyGoal, updateWeeklyGoalText, deleteWeeklyGoal,
         isLoading,
       }}
     >
