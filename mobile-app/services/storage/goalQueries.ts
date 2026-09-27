@@ -296,3 +296,71 @@ export async function queryGetWeeklyGoalStats(
   );
   return { total: row?.total ?? 0, completed: row?.completed ?? 0 };
 }
+
+// ── Automatic Rollover Helpers ────────────────────────────────────────────────
+
+/**
+ * Automatically rolls over uncompleted daily goals from past days into today.
+ */
+export async function queryRolloverUncompletedDailyGoals(
+  db: SQLiteDatabase,
+  today: string
+): Promise<number> {
+  const now = new Date().toISOString();
+  const pastUncompleted = await db.getAllAsync<DailyGoalRow>(
+    'SELECT * FROM daily_goals WHERE date < ? AND is_completed = 0 ORDER BY date ASC, position ASC;',
+    [today]
+  );
+  if (pastUncompleted.length === 0) return 0;
+
+  const todayCountRow = await db.getFirstAsync<{ count: number }>(
+    'SELECT COUNT(*) as count FROM daily_goals WHERE date = ?;',
+    [today]
+  );
+  let nextPos = todayCountRow?.count ?? 0;
+
+  for (const goal of pastUncompleted) {
+    await db.runAsync(
+      'UPDATE daily_goals SET date = ?, position = ?, updated_at = ? WHERE id = ?;',
+      [today, nextPos++, now, goal.id]
+    );
+  }
+  return pastUncompleted.length;
+}
+
+/**
+ * Automatically rolls over uncompleted weekly goals from past weeks into current week.
+ * If a parent goal was completed last week, the uncompleted child goal is promoted
+ * to top-level (tier 1) so it remains visible and actionable in the active week.
+ */
+export async function queryRolloverUncompletedWeeklyGoals(
+  db: SQLiteDatabase,
+  currentWeek: string
+): Promise<number> {
+  const now = new Date().toISOString();
+  const pastUncompleted = await db.getAllAsync<WeeklyGoalRow>(
+    'SELECT * FROM weekly_goals WHERE week_label < ? AND is_completed = 0 ORDER BY tier ASC, position ASC;',
+    [currentWeek]
+  );
+  if (pastUncompleted.length === 0) return 0;
+
+  const pastUncompletedIds = new Set(pastUncompleted.map((g) => g.id));
+
+  for (const goal of pastUncompleted) {
+    let newParentId = goal.parent_id;
+    let newTier = goal.tier;
+
+    if (goal.parent_id && !pastUncompletedIds.has(goal.parent_id)) {
+      newParentId = null;
+      newTier = 1;
+    }
+
+    await db.runAsync(
+      'UPDATE weekly_goals SET week_label = ?, parent_id = ?, tier = ?, updated_at = ? WHERE id = ?;',
+      [currentWeek, newParentId, newTier, now, goal.id]
+    );
+  }
+
+  return pastUncompleted.length;
+}
+

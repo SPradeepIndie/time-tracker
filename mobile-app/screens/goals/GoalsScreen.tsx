@@ -8,7 +8,9 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, Modal, FlatList, ActivityIndicator,
   KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard,
+  ToastAndroid,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from '../../components/layout/SafeAreaView';
 import { useTheme } from '../../context/ThemeContext';
 import { useGoalContext } from '../../context/GoalContext';
@@ -25,11 +27,20 @@ export default function GoalsScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const {
     todayGoals, tomorrowGoals, isLoading,
-    addDailyGoal, toggleDailyGoal, updateDailyGoalText, deleteDailyGoal, duplicateDailyGoal,
+    addDailyGoal, toggleDailyGoal, updateDailyGoalText, deleteDailyGoal,
     categories, addCategory, updateCategory, deleteCategory,
     weeklyGoals, currentWeekLabel, nextWeekLabel, selectedWeekLabel, setSelectedWeekLabel,
-    addWeeklyGoal, toggleWeeklyGoal, updateWeeklyGoalText, deleteWeeklyGoal, duplicateWeeklyGoal,
+    addWeeklyGoal, toggleWeeklyGoal, updateWeeklyGoalText, deleteWeeklyGoal,
   } = useGoalContext();
+
+  const handleCopyGoalText = (text: string) => {
+    Clipboard.setStringAsync(text);
+    if (Platform.OS === 'android') {
+      ToastAndroid.show('Copied to clipboard', ToastAndroid.SHORT);
+    } else {
+      Alert.alert('Copied', 'Goal copied to clipboard');
+    }
+  };
 
   const [activeTab, setActiveTab] = useState<TabType>('daily');
   const [showAllFields, setShowAllFields] = useState(false);
@@ -147,7 +158,7 @@ export default function GoalsScreen({ navigation }: Props) {
           <AppIcon name="pencil" size={17} color={colors.textSecondary} />
         </TouchableOpacity>
         <TouchableOpacity
-          onPress={() => duplicateDailyGoal(goal)}
+          onPress={() => handleCopyGoalText(goal.text)}
           style={s.actionIconBtn}
         >
           <AppIcon name="copy" size={17} color={colors.textSecondary} />
@@ -216,7 +227,7 @@ export default function GoalsScreen({ navigation }: Props) {
               <AppIcon name="pencil" size={16} color={colors.textSecondary} />
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => duplicateWeeklyGoal(goal)}
+              onPress={() => handleCopyGoalText(goal.text)}
               style={s.actionIconBtn}
             >
               <AppIcon name="copy" size={16} color={colors.textSecondary} />

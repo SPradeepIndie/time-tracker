@@ -17,7 +17,10 @@ import {
   Alert,
   Modal,
   ScrollView,
+  ToastAndroid,
+  Platform,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { useTrackContext } from '../../context/TrackContext';
 import { useTheme } from '../../context/ThemeContext';
 import { HomeScreenNavigationProp } from '../../navigation/types';
@@ -130,25 +133,12 @@ export default function HomeScreen({ navigation }: Props) {
     );
   };
 
-  const handleDuplicate = async (track: Track) => {
-    try {
-      await addTrack({
-        title: `${track.title} (Copy)`,
-        description: track.description,
-        status: track.taskType === 'allocated' ? 'time-allocated' : 'created',
-        priority: track.priority,
-        taskType: track.taskType,
-        timeInputMode: track.timeInputMode,
-        allocatedStartTime: track.allocatedStartTime,
-        allocatedEndTime: track.allocatedEndTime,
-        blockMultiplier: track.blockMultiplier,
-        durationMinutes: track.durationMinutes,
-        startTime: track.startTime || new Date(),
-        tags: track.tags,
-      });
-      Alert.alert('Task Duplicated', `"${track.title}" has been duplicated.`);
-    } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Failed to duplicate task.');
+  const handleCopyTask = (title: string) => {
+    Clipboard.setStringAsync(title);
+    if (Platform.OS === 'android') {
+      ToastAndroid.show('Copied to clipboard', ToastAndroid.SHORT);
+    } else {
+      Alert.alert('Copied', 'Task title copied to clipboard');
     }
   };
 
@@ -392,7 +382,7 @@ export default function HomeScreen({ navigation }: Props) {
                       <View style={s.actions}>
                         <TouchableOpacity
                           style={s.iconActionBtn}
-                          onPress={() => handleDuplicate(item)}
+                          onPress={() => handleCopyTask(item.title)}
                         >
                           <AppIcon name="copy" size={18} color={colors.textSecondary} />
                         </TouchableOpacity>
