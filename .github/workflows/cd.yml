@@ -187,8 +187,21 @@ jobs:
           AAB_PATH=$(find mobile-app/android/app/build/outputs/bundle/release -name "*.aab" | head -n 1)
           
           if [ -f "$APK_PATH" ]; then
-            cp "$APK_PATH" "release-artifacts/TimeTracker-${{ steps.meta.outputs.tag }}.apk"
-            echo "APK ready: release-artifacts/TimeTracker-${{ steps.meta.outputs.tag }}.apk"
+            FINAL_APK="release-artifacts/TimeTracker-${{ steps.meta.outputs.tag }}.apk"
+            cp "$APK_PATH" "$FINAL_APK"
+            
+            # Re-sign the APK to ensure clean, valid v2/v3 signatures after bundleRelease
+            APKSIGNER=$(find $ANDROID_HOME/build-tools -name "apksigner" | sort -V | tail -n 1)
+            echo "Signing APK with ${APKSIGNER}..."
+            "$APKSIGNER" sign \
+              --ks mobile-app/android/app/debug.keystore \
+              --ks-pass pass:android \
+              --key-pass pass:android \
+              "$FINAL_APK"
+
+            echo "Verifying signed APK..."
+            "$APKSIGNER" verify -v "$FINAL_APK"
+            echo "APK ready and verified: ${FINAL_APK}"
           else
             echo "ERROR: APK not found"
             exit 1
