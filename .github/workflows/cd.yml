@@ -155,6 +155,18 @@ jobs:
         working-directory: mobile-app
         run: npx expo prebuild --platform android --no-install
 
+      - name: Restore Keystore from Secret
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "Restoring shared keystore from repository secrets..."
+            echo "$KEYSTORE_BASE64" | base64 -d > mobile-app/android/app/debug.keystore
+            echo "Keystore restored successfully."
+          else
+            echo "Notice: ANDROID_KEYSTORE_BASE64 not set; using default keystore."
+          fi
+
       - name: Configure Gradle & Wrapper
         run: |
           # Pin Gradle wrapper to 8.14.3 to prevent Gradle 9 incompatibility
@@ -192,11 +204,16 @@ jobs:
             
             # Re-sign the APK to ensure clean, valid v2/v3 signatures after bundleRelease
             APKSIGNER=$(find $ANDROID_HOME/build-tools -name "apksigner" | sort -V | tail -n 1)
+            KS_PASS="${{ secrets.ANDROID_KEYSTORE_PASSWORD || 'android' }}"
+            KEY_PASS="${{ secrets.ANDROID_KEY_PASSWORD || 'android' }}"
+            KEY_ALIAS="${{ secrets.ANDROID_KEY_ALIAS || 'androiddebugkey' }}"
+
             echo "Signing APK with ${APKSIGNER}..."
             "$APKSIGNER" sign \
               --ks mobile-app/android/app/debug.keystore \
-              --ks-pass pass:android \
-              --key-pass pass:android \
+              --ks-pass pass:"${KS_PASS}" \
+              --key-pass pass:"${KEY_PASS}" \
+              --ks-key-alias "${KEY_ALIAS}" \
               "$FINAL_APK"
 
             echo "Verifying signed APK..."
