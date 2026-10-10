@@ -19,6 +19,7 @@ import {
   ScrollView,
   ToastAndroid,
   Platform,
+  BackHandler,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useTrackContext } from '../../context/TrackContext';
@@ -29,6 +30,7 @@ import { Header } from '../../components/layout/Header';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { AppIcon } from '../../components/ui/AppIcon';
+import { ThemedAlert, ThemedAlertProps } from '../../components/ui';
 import * as SecureStore from 'expo-secure-store';
 import { Track, TaskStatus } from '../../types/Track';
 
@@ -53,6 +55,16 @@ function formatDisplayTime(d: Date | string | undefined): string {
   return `${displayH}:${formatTwoDigits(m)} ${ampm}`;
 }
 
+function getScheduledDateLabel(d: Date): string {
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return 'Today';
+  const tm = new Date();
+  tm.setDate(tm.getDate() + 1);
+  if (d.toDateString() === tm.toDateString()) return 'Tomorrow';
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${months[d.getMonth()]} ${d.getDate()}`;
+}
+
 const STATUS_CONFIG: Record<
   TaskStatus,
   { label: string; color: string; icon: string; family?: 'ionicons' | 'feather' | 'material' }
@@ -65,12 +77,15 @@ const STATUS_CONFIG: Record<
 };
 
 export default function HomeScreen({ navigation }: Props) {
-  const { tracks, deleteTrack, updateTrack, searchTracks, refreshTracks, addTrack } = useTrackContext();
+  const { tracks, deleteTrack, updateTrack, searchTracks, refreshTracks, addTrack, reorderTracks } = useTrackContext();
   const { colors } = useTheme();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterType>('unallocated');
   const [refreshing, setRefreshing] = useState(false);
+  const [isReorderMode, setIsReorderMode] = useState(false);
+  const [fabExpanded, setFabExpanded] = useState(false);
+  const [alertConfig, setAlertConfig] = useState<ThemedAlertProps | null>(null);
 
   // Sorting state (configured via Settings)
   const [taskSortBy, setTaskSortBy] = useState<'priority' | 'status'>('priority');
@@ -91,6 +106,36 @@ export default function HomeScreen({ navigation }: Props) {
 
   // Status transition modal state
   const [selectedTaskForStatus, setSelectedTaskForStatus] = useState<Track | null>(null);
+
+  // Hardware Back Handler: handles overlay dismissal and prevents unhandled GO_BACK warnings
+  useEffect(() => {
+    const onBackPress = () => {
+      if (alertConfig) {
+        setAlertConfig(null);
+        return true;
+      }
+      if (fabExpanded) {
+        setFabExpanded(false);
+        return true;
+      }
+      if (selectedTaskForStatus) {
+        setSelectedTaskForStatus(null);
+        return true;
+      }
+      if (isReorderMode) {
+        setIsReorderMode(false);
+        return true;
+      }
+      if (!navigation.canGoBack()) {
+        BackHandler.exitApp();
+        return true;
+      }
+      return false;
+    };
+
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [alertConfig, fabExpanded, selectedTaskForStatus, isReorderMode, navigation]);
 
   // Auto-transition engine: check clock every 30 seconds for scheduled tasks
   useEffect(() => {
@@ -119,18 +164,22 @@ export default function HomeScreen({ navigation }: Props) {
   };
 
   const handleDelete = (id: string, title: string) => {
-    Alert.alert(
-      'Delete Task',
-      `Are you sure you want to delete "${title}"?`,
-      [
+    setAlertConfig({
+      visible: true,
+      title: 'Delete Task',
+      message: `Are you sure you want to delete "${title}"?`,
+      icon: 'trash',
+      iconColor: colors.error || '#EF4444',
+      buttons: [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: () => deleteTrack(id),
         },
-      ]
-    );
+      ],
+      onClose: () => setAlertConfig(null),
+    });
   };
 
   const handleCopyTask = (title: string) => {
@@ -153,6 +202,9 @@ export default function HomeScreen({ navigation }: Props) {
 
   // Sort tasks
   const sortedTracks = [...filteredTracks].sort((a, b) => {
+    if (isReorderMode) {
+      return (a.position ?? 0) - (b.position ?? 0);
+    }
     if (taskSortBy === 'priority') {
       const pWeights: Record<string, number> = { high: 3, medium: 2, low: 1 };
       const diff = (pWeights[b.priority] || 0) - (pWeights[a.priority] || 0);
@@ -169,6 +221,18 @@ export default function HomeScreen({ navigation }: Props) {
       return taskSortOrder === 'asc' ? -diff : diff;
     }
   });
+
+  const handleMoveTask = async (index: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= sortedTracks.length) return;
+
+    const currentList = [...sortedTracks];
+    const [moved] = currentList.splice(index, 1);
+    currentList.splice(targetIndex, 0, moved);
+
+    const reorderedItems = currentList.map((t, idx) => ({ id: t.id, position: idx }));
+    await reorderTracks(reorderedItems);
+  };
 
   const getGroupKey = (track: Track): string => {
     if (taskSortBy === 'priority') {
@@ -209,7 +273,15 @@ export default function HomeScreen({ navigation }: Props) {
         endTime: newStatus === 'completed' ? new Date() : undefined,
       });
     } catch {
-      Alert.alert('Error', 'Failed to update task status.');
+      setAlertConfig({
+        visible: true,
+        title: 'Status Update Failed',
+        message: 'Unable to update task status. Please try again.',
+        icon: 'alert-circle',
+        iconColor: colors.error || '#EF4444',
+        buttons: [{ text: 'OK', style: 'default' }],
+        onClose: () => setAlertConfig(null),
+      });
     }
   };
 
@@ -226,7 +298,7 @@ export default function HomeScreen({ navigation }: Props) {
             placeholder="Search tasks by title, tag, description…"
             value={searchQuery}
             onChangeText={setSearchQuery}
-            icon="🔍"
+            icon={<AppIcon name="search-outline" size={18} color={colors.textSecondary} />}
           />
         </View>
 
@@ -269,6 +341,26 @@ export default function HomeScreen({ navigation }: Props) {
               );
             })}
           </ScrollView>
+        </View>
+
+        {/* ── List Meta & Reorder Toggle ─────────────────────────── */}
+        <View style={s.listMetaRow}>
+          <Text style={s.listMetaCount}>
+            {sortedTracks.length} {sortedTracks.length === 1 ? 'task' : 'tasks'}
+          </Text>
+          <TouchableOpacity
+            style={[s.reorderToggleBtn, isReorderMode && s.reorderToggleBtnActive]}
+            onPress={() => setIsReorderMode((prev) => !prev)}
+          >
+            <AppIcon
+              name="reorder-two-outline"
+              size={16}
+              color={isReorderMode ? colors.primary : colors.textSecondary}
+            />
+            <Text style={[s.reorderToggleText, isReorderMode && s.reorderToggleTextActive]}>
+              {isReorderMode ? 'Done' : 'Reorder'}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* ── Task List ──────────────────────────────────────────── */}
@@ -322,6 +414,48 @@ export default function HomeScreen({ navigation }: Props) {
                       </View>
                     </View>
 
+                    {/* Reorder Buttons Row (when in Reorder Mode) */}
+                    {isReorderMode && (
+                      <View style={s.reorderControlsRow}>
+                        <Text style={s.reorderPosText}>Position #{index + 1}</Text>
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                          <TouchableOpacity
+                            style={[s.reorderBtn, index === 0 && s.reorderBtnDisabled]}
+                            onPress={() => handleMoveTask(index, 'up')}
+                            disabled={index === 0}
+                          >
+                            <AppIcon
+                              name="chevron-up"
+                              size={16}
+                              color={index === 0 ? colors.border : colors.primary}
+                            />
+                            <Text style={[s.reorderBtnText, index === 0 && { color: colors.border }]}>
+                              Move Up
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[s.reorderBtn, index === sortedTracks.length - 1 && s.reorderBtnDisabled]}
+                            onPress={() => handleMoveTask(index, 'down')}
+                            disabled={index === sortedTracks.length - 1}
+                          >
+                            <AppIcon
+                              name="chevron-down"
+                              size={16}
+                              color={index === sortedTracks.length - 1 ? colors.border : colors.primary}
+                            />
+                            <Text
+                              style={[
+                                s.reorderBtnText,
+                                index === sortedTracks.length - 1 && { color: colors.border },
+                              ]}
+                            >
+                              Move Down
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    )}
+
                     {/* Description */}
                     {!!item.description && (
                       <Text style={s.trackDescription} numberOfLines={2}>
@@ -342,8 +476,12 @@ export default function HomeScreen({ navigation }: Props) {
                           </Text>
                         </View>
                         <View style={[s.trackTypeBadge, { flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
-                          <AppIcon name="flash-outline" size={12} color={colors.primary} />
-                          <Text style={s.trackTypeBadgeText}>Same-Day</Text>
+                          <AppIcon name="calendar-outline" size={12} color={colors.primary} />
+                          <Text style={s.trackTypeBadgeText}>
+                            {item.allocatedStartTime
+                              ? getScheduledDateLabel(new Date(item.allocatedStartTime))
+                              : 'Scheduled'}
+                          </Text>
                         </View>
                       </View>
                     ) : (
@@ -479,13 +617,74 @@ export default function HomeScreen({ navigation }: Props) {
           </TouchableOpacity>
         </Modal>
 
-        {/* ── FAB to Add Task ────────────────────────────────────── */}
+        {/* ── Speed Dial Backdrop ─────────────────────────────────── */}
+        {fabExpanded && (
+          <TouchableOpacity
+            style={s.speedDialBackdrop}
+            activeOpacity={1}
+            onPress={() => setFabExpanded(false)}
+          />
+        )}
+
+        {/* ── Speed Dial Item (Up: Plan Task) ────────────────────── */}
+        {fabExpanded && (
+          <View style={s.speedDialUpContainer}>
+            <View style={s.speedDialLabelPill}>
+              <Text style={s.speedDialLabelText}>Plan Task</Text>
+            </View>
+            <TouchableOpacity
+              style={[s.speedDialMiniBtn, { backgroundColor: colors.primary }]}
+              onPress={() => {
+                setFabExpanded(false);
+                navigation.navigate('CreateEdit', {});
+              }}
+            >
+              <AppIcon name="calendar-outline" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ── Speed Dial Item (Left: Blast) ──────────────────────── */}
+        {fabExpanded && (
+          <View style={s.speedDialLeftContainer}>
+            <View style={s.speedDialLabelPill}>
+              <Text style={s.speedDialLabelText}>Blast</Text>
+            </View>
+            <TouchableOpacity
+              style={[s.speedDialMiniBtn, { backgroundColor: '#F59E0B' }]}
+              onPress={() => {
+                setFabExpanded(false);
+                navigation.navigate('Blast');
+              }}
+            >
+              <AppIcon name="flash-outline" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ── Main FAB ────────────────────────────────────────────── */}
         <TouchableOpacity
-          style={s.fab}
-          onPress={() => navigation.navigate('CreateEdit', {})}
+          style={[s.fab, fabExpanded && s.fabActive]}
+          onPress={() => setFabExpanded((prev) => !prev)}
         >
-          <Text style={s.fabText}>+</Text>
+          <AppIcon
+            name={fabExpanded ? 'close' : 'add'}
+            size={fabExpanded ? 24 : 30}
+            color="#FFFFFF"
+          />
         </TouchableOpacity>
+        {/* ── Custom Themed Alert Dialog ─────────────────────────── */}
+        {alertConfig && (
+          <ThemedAlert
+            visible={alertConfig.visible}
+            title={alertConfig.title}
+            message={alertConfig.message}
+            icon={alertConfig.icon}
+            iconColor={alertConfig.iconColor}
+            buttons={alertConfig.buttons}
+            onClose={() => setAlertConfig(null)}
+          />
+        )}
       </View>
     </SafeAreaView>
   );
@@ -805,17 +1004,138 @@ function makeStyles(colors: any) {
       backgroundColor: colors.primary,
       justifyContent: 'center',
       alignItems: 'center',
-      elevation: 5,
-      shadowColor: colors.shadow,
+      elevation: 8,
+      shadowColor: '#000',
       shadowOffset: { width: 0, height: 3 },
       shadowOpacity: 0.3,
       shadowRadius: 5,
+      zIndex: 12,
     },
-    fabText: {
-      fontSize: 32,
-      color: '#fff',
-      fontWeight: 'bold',
-      marginTop: -2,
+    fabActive: {
+      backgroundColor: colors.textSecondary,
+    },
+    speedDialBackdrop: {
+      ...StyleSheet.absoluteFill,
+      backgroundColor: 'rgba(0,0,0,0.35)',
+      zIndex: 10,
+    },
+    speedDialUpContainer: {
+      position: 'absolute',
+      right: 24,
+      bottom: 92,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      zIndex: 11,
+    },
+    speedDialLeftContainer: {
+      position: 'absolute',
+      right: 88,
+      bottom: 28,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      zIndex: 11,
+    },
+    speedDialMiniBtn: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      justifyContent: 'center',
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.25,
+      shadowRadius: 5,
+      elevation: 6,
+    },
+    speedDialLabelPill: {
+      backgroundColor: colors.surface,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.15,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    speedDialLabelText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.text,
+    },
+    listMetaRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingVertical: 6,
+    },
+    listMetaCount: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    reorderToggleBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    reorderToggleBtnActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primary + '18',
+    },
+    reorderToggleText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    reorderToggleTextActive: {
+      color: colors.primary,
+      fontWeight: '700',
+    },
+    reorderControlsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: 10,
+      paddingTop: 8,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    reorderPosText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.primary,
+    },
+    reorderBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      backgroundColor: colors.primary + '12',
+    },
+    reorderBtnDisabled: {
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    reorderBtnText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.primary,
     },
   });
 }

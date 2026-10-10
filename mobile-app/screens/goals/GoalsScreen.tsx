@@ -144,7 +144,15 @@ export default function GoalsScreen({ navigation }: Props) {
       >
         {goal.isCompleted && <AppIcon name="checkmark" size={14} color="#fff" />}
       </TouchableOpacity>
-      <Text style={[s.goalText, goal.isCompleted && s.goalTextDone]}>{goal.text}</Text>
+      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <Text style={[s.goalText, goal.isCompleted && s.goalTextDone]}>{goal.text}</Text>
+        {(goal.status === 'overdue' || goal.status === 'completed_overdue') && (
+          <View style={s.overdueBadge}>
+            <AppIcon name="alert-circle-outline" size={12} color="#F59E0B" />
+            <Text style={s.overdueBadgeText}>Overdue</Text>
+          </View>
+        )}
+      </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <TouchableOpacity
           onPress={() => {
@@ -201,6 +209,12 @@ export default function GoalsScreen({ navigation }: Props) {
             <Text style={[s.goalText, goal.isCompleted && s.goalTextDone]}>
               {goal.text}
             </Text>
+            {(goal.status === 'overdue' || goal.status === 'completed_overdue') && (
+              <View style={s.overdueBadge}>
+                <AppIcon name="alert-circle-outline" size={12} color="#F59E0B" />
+                <Text style={s.overdueBadgeText}>Overdue</Text>
+              </View>
+            )}
           </TouchableOpacity>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             {goal.tier < 3 && (
@@ -733,5 +747,21 @@ function makeStyles(colors: any) {
     defaultBadge: { fontSize: 12 },
     addCatLabel: { fontSize: 14, fontWeight: '600', marginTop: 16, marginBottom: 8 },
     colorSwatch: { width: 30, height: 30, borderRadius: 15, marginRight: 8 },
+    overdueBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 6,
+      backgroundColor: '#F59E0B18',
+      borderWidth: 1,
+      borderColor: '#F59E0B',
+    },
+    overdueBadgeText: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: '#F59E0B',
+    },
   });
 }

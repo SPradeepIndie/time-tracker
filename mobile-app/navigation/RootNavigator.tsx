@@ -16,6 +16,7 @@ import CreateEditScreen from '../screens/create-edit/CreateEditScreen';
 import InfoScreen from '../screens/about';
 import AuthScreen from '../screens/auth/AuthScreen';
 import PinSetupScreen from '../screens/auth/PinSetupScreen';
+import BlastScreen from '../screens/blast/BlastScreen';
 
 const PIN_HASH_KEY = 'app_pin_hash';
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -71,6 +72,11 @@ export const RootNavigator: React.FC = () => {
         name="CreateEdit"
         component={CreateEditScreen}
         options={{ title: 'Track' }}
+      />
+      <Stack.Screen
+        name="Blast"
+        component={BlastScreen}
+        options={{ headerShown: false }}
       />
       <Stack.Screen
         name="Info"

@@ -1,39 +1,81 @@
 /**
  * analytics.ts
  *
- * Mathematical analytics formulations for the Time Tracker app.
+ * Mathematical analytics engine for the Time Tracker app.
  *
- * Daily Metrics:
- *  T_prod = Σ t_spent(i)  for completed/in-progress tasks
- *  G_day  = (G_completed / G_total) × 100%
- *  R_day  = (Σ A_checked / Σ A_total) × 100%
- *  P_day  = W1 × TaskRate + W2 × G_day + W3 × R_day
- *
- * Weekly Metrics:
- *  P_category(c) = (completed goals+subgoals in c / total in c) × 100%
- *  7-day rolling history for trend graphs
+ * Developer Dictionary / UI Mapping Guide:
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Code Metric          | UI Display Label     | Description
+ * ─────────────────────────────────────────────────────────────────────────────
+ * productivityMinutes  | Productivity Time    | Total focused time spent on tasks
+ * taskCompletionRate   | Tasks                | Percentage of daily tasks completed
+ * goalHitRate          | Daily Goals          | Percentage of target goals achieved
+ * routineHitRate       | Routines             | Percentage of routine sub-activities checked
+ * overallProgress      | Overall Day Progress | Composite daily progress based on custom weights
+ * progressPercent      | Category Progress    | Weekly progress within a specific goal category
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 import { SQLiteDatabase } from 'expo-sqlite';
+import * as SecureStore from 'expo-secure-store';
 import { queryGetDailyGoalStats, queryGetWeeklyGoalStats, queryGetAllCategories } from '../storage/goalQueries';
 import { queryGetRoutineStatsForDate } from '../storage/routineQueries';
 import { getCurrentWeekDateRange } from '../../utils/dateUtils';
 
-// ─── Weights for Overall Progress ─────────────────────────────────────────────
+// ─── Configurable Weights for Overall Progress ────────────────────────────────
+
+export interface AnalyticsWeights {
+  tasks: number;    // Default 0.40 (40%)
+  goals: number;    // Default 0.35 (35%)
+  routines: number; // Default 0.25 (25%)
+}
+
+export const DEFAULT_ANALYTICS_WEIGHTS: AnalyticsWeights = {
+  tasks: 0.40,
+  goals: 0.35,
+  routines: 0.25,
+};
+
+export const ANALYTICS_WEIGHTS_KEY = 'analytics_custom_weights';
+
+export async function loadAnalyticsWeights(): Promise<AnalyticsWeights> {
+  try {
+    const raw = await SecureStore.getItemAsync(ANALYTICS_WEIGHTS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (
+        typeof parsed.tasks === 'number' &&
+        typeof parsed.goals === 'number' &&
+        typeof parsed.routines === 'number'
+      ) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('[Analytics] Failed to load custom weights from SecureStore, using defaults', err);
+  }
+  return DEFAULT_ANALYTICS_WEIGHTS;
+}
+
+export async function saveAnalyticsWeights(weights: AnalyticsWeights): Promise<void> {
+  await SecureStore.setItemAsync(ANALYTICS_WEIGHTS_KEY, JSON.stringify(weights));
+}
+
+// ─── Legacy weight alias for backward compatibility ───────────────────────────
 export const ANALYTICS_WEIGHTS = {
-  W1: 0.40, // Tasks
-  W2: 0.35, // Goals
-  W3: 0.25, // Routines
+  W1: DEFAULT_ANALYTICS_WEIGHTS.tasks,
+  W2: DEFAULT_ANALYTICS_WEIGHTS.goals,
+  W3: DEFAULT_ANALYTICS_WEIGHTS.routines,
 };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface DailyAnalytics {
   date: string;
-  productivityMinutes: number;    // T_prod in minutes
-  goalHitRate: number;            // G_day (0–100)
-  routineHitRate: number;         // R_day (0–100)
-  taskCompletionRate: number;     // Task completion % (0–100)
-  overallProgress: number;        // P_day (0–100)
+  productivityMinutes: number;    // Code: T_prod in minutes | UI: Productivity Time
+  goalHitRate: number;            // Code: G_day (0–100)     | UI: Daily Goals %
+  routineHitRate: number;         // Code: R_day (0–100)     | UI: Routines %
+  taskCompletionRate: number;     // Code: Task completion   | UI: Tasks %
+  overallProgress: number;        // Code: P_day (0–100)     | UI: Overall Day Progress %
   totalTasks: number;
   completedTasks: number;
   totalGoals: number;
@@ -46,7 +88,7 @@ export interface WeeklyCategoryStats {
   categoryId: string;
   categoryName: string;
   categoryColor: string;
-  progressPercent: number;        // P_category(c)
+  progressPercent: number;        // Code: P_category(c) | UI: Category Progress %
   total: number;
   completed: number;
 }
@@ -54,7 +96,7 @@ export interface WeeklyCategoryStats {
 export interface WeeklyAnalytics {
   weekLabel: string;
   categoryStats: WeeklyCategoryStats[];
-  dailyHistory: DailyAnalytics[];  // Last 7 days rolling
+  dailyHistory: DailyAnalytics[];  // Calendar week (Monday to Sunday)
 }
 
 // ─── Daily Task Stats from DB ─────────────────────────────────────────────────
@@ -90,7 +132,8 @@ async function getTaskStats(db: SQLiteDatabase, date: string): Promise<TaskStats
 
 export async function calculateDailyAnalytics(
   db: SQLiteDatabase,
-  date: string
+  date: string,
+  customWeights?: AnalyticsWeights
 ): Promise<DailyAnalytics> {
   const [taskStats, goalStats, routineStats] = await Promise.all([
     getTaskStats(db, date),
@@ -110,11 +153,26 @@ export async function calculateDailyAnalytics(
     ? (routineStats.checked / routineStats.total) * 100
     : 0;
 
-  // P_day = W1 × TaskRate + W2 × G_day + W3 × R_day
-  const overallProgress =
-    ANALYTICS_WEIGHTS.W1 * taskCompletionRate +
-    ANALYTICS_WEIGHTS.W2 * goalHitRate +
-    ANALYTICS_WEIGHTS.W3 * routineHitRate;
+  // Use configured weights (fallback to default)
+  const weights = customWeights ?? DEFAULT_ANALYTICS_WEIGHTS;
+
+  // Dynamic weight normalization: only active categories contribute,
+  // preventing zero-item days from artificially dragging down the score
+  const activeWeights: { weight: number; rate: number }[] = [];
+  if (taskStats.total > 0) activeWeights.push({ weight: weights.tasks, rate: taskCompletionRate });
+  if (goalStats.total > 0) activeWeights.push({ weight: weights.goals, rate: goalHitRate });
+  if (routineStats.total > 0) activeWeights.push({ weight: weights.routines, rate: routineHitRate });
+
+  let overallProgress = 0;
+  if (activeWeights.length > 0) {
+    const totalActiveWeight = activeWeights.reduce((sum, w) => sum + w.weight, 0);
+    if (totalActiveWeight > 0) {
+      overallProgress = activeWeights.reduce(
+        (sum, w) => sum + (w.weight / totalActiveWeight) * w.rate,
+        0
+      );
+    }
+  }
 
   return {
     date,
@@ -136,9 +194,10 @@ export async function calculateDailyAnalytics(
 
 export async function calculateWeeklyAnalytics(
   db: SQLiteDatabase,
-  weekLabel: string
+  weekLabel: string,
+  customWeights?: AnalyticsWeights
 ): Promise<WeeklyAnalytics> {
-  // Category progression P_category(c)
+  // Category progression (Code: P_category(c) | UI: Category Progress)
   const categories = await queryGetAllCategories(db);
   const categoryStats = await Promise.all(
     categories.map(async (cat) => {
@@ -156,11 +215,11 @@ export async function calculateWeeklyAnalytics(
     })
   );
 
-  // Monday to Sunday calendar week history (replaces rolling 7 days)
+  // Monday to Sunday calendar week history
   const { days } = getCurrentWeekDateRange();
   const dailyHistory: DailyAnalytics[] = [];
   for (const dateStr of days) {
-    dailyHistory.push(await calculateDailyAnalytics(db, dateStr));
+    dailyHistory.push(await calculateDailyAnalytics(db, dateStr, customWeights));
   }
 
   return { weekLabel, categoryStats, dailyHistory };

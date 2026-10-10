@@ -18,7 +18,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -34,6 +33,7 @@ import {
 } from '../../types/Track';
 import { SafeAreaView } from '../../components/layout/SafeAreaView';
 import { AppIcon } from '../../components/ui/AppIcon';
+import { ThemedAlert, ThemedAlertProps } from '../../components/ui';
 
 interface Props {
   navigation: CreateEditScreenNavigationProp;
@@ -48,14 +48,20 @@ function dateToTimeString(d: Date): string {
   return `${formatTwoDigits(d.getHours())}:${formatTwoDigits(d.getMinutes())}`;
 }
 
-function parseTimeToToday(timeStr: string): Date | null {
+function parseTimeToDate(timeStr: string, baseDate: Date): Date | null {
   const parts = timeStr.split(':');
   if (parts.length !== 2) return null;
   const h = parseInt(parts[0], 10);
   const m = parseInt(parts[1], 10);
   if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0, 0);
+  return new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), h, m, 0, 0);
+}
+
+function formatDateString(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function formatDisplayTime(d: Date): string {
@@ -80,6 +86,12 @@ export default function CreateEditScreen({ navigation, route }: Props) {
 
   // Task scheduling state
   const [taskType, setTaskType] = useState<TaskType>('unallocated');
+  const [scheduledDateMode, setScheduledDateMode] = useState<'today' | 'tomorrow' | 'custom'>('today');
+  const [customScheduledDate, setCustomScheduledDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 2);
+    return formatDateString(d);
+  });
   const [timeInputMode, setTimeInputMode] = useState<TimeInputMode>('start-duration');
   const [startTimeInput, setStartTimeInput] = useState(() => dateToTimeString(new Date()));
   const [endTimeInput, setEndTimeInput] = useState(() => {
@@ -87,6 +99,7 @@ export default function CreateEditScreen({ navigation, route }: Props) {
     return dateToTimeString(end);
   });
   const [blockMultiplier, setBlockMultiplier] = useState(1);
+  const [alertConfig, setAlertConfig] = useState<ThemedAlertProps | null>(null);
 
   const isEdit = !!id;
 
@@ -103,7 +116,22 @@ export default function CreateEditScreen({ navigation, route }: Props) {
         if (track.timeInputMode) setTimeInputMode(track.timeInputMode);
         if (track.blockMultiplier) setBlockMultiplier(track.blockMultiplier);
         if (track.allocatedStartTime) {
-          setStartTimeInput(dateToTimeString(new Date(track.allocatedStartTime)));
+          const allocStart = new Date(track.allocatedStartTime);
+          setStartTimeInput(dateToTimeString(allocStart));
+
+          const now = new Date();
+          if (allocStart.toDateString() === now.toDateString()) {
+            setScheduledDateMode('today');
+          } else {
+            const tm = new Date();
+            tm.setDate(tm.getDate() + 1);
+            if (allocStart.toDateString() === tm.toDateString()) {
+              setScheduledDateMode('tomorrow');
+            } else {
+              setScheduledDateMode('custom');
+              setCustomScheduledDate(formatDateString(allocStart));
+            }
+          }
         }
         if (track.allocatedEndTime) {
           setEndTimeInput(dateToTimeString(new Date(track.allocatedEndTime)));
@@ -111,6 +139,21 @@ export default function CreateEditScreen({ navigation, route }: Props) {
       }
     }
   }, [id]);
+
+  const getTargetDate = (): Date => {
+    const now = new Date();
+    if (scheduledDateMode === 'today') return now;
+    if (scheduledDateMode === 'tomorrow') {
+      const tm = new Date();
+      tm.setDate(tm.getDate() + 1);
+      return tm;
+    }
+    const parts = customScheduledDate.split('-').map(Number);
+    if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+      return new Date(parts[0], parts[1] - 1, parts[2]);
+    }
+    return now;
+  };
 
   // Derived scheduling calculations
   const calculateAllocatedDates = (): {
@@ -123,22 +166,27 @@ export default function CreateEditScreen({ navigation, route }: Props) {
       return { computedStart: null, computedEnd: null, computedDurationMinutes: 0 };
     }
 
+    const targetDate = getTargetDate();
     const now = new Date();
+    const isToday = targetDate.toDateString() === now.toDateString();
     const durationMinutes = blockMultiplier * BLOCK_DURATION_MINUTES;
 
     if (timeInputMode === 'duration-only') {
-      const start = new Date(now);
+      const start = new Date(targetDate);
+      if (isToday) {
+        start.setHours(now.getHours(), now.getMinutes(), 0, 0);
+      }
       const end = new Date(start.getTime() + durationMinutes * 60000);
       return { computedStart: start, computedEnd: end, computedDurationMinutes: durationMinutes };
     }
 
     if (timeInputMode === 'start-duration') {
-      const start = parseTimeToToday(startTimeInput);
+      const start = parseTimeToDate(startTimeInput, targetDate);
       if (!start) {
         return { computedStart: null, computedEnd: null, computedDurationMinutes: durationMinutes, error: 'Enter a valid start time (HH:MM)' };
       }
-      // Start cannot be in the distant past (allow 2-min clock drift)
-      if (start.getTime() < now.getTime() - 120000) {
+      // Start cannot be in the past if scheduling for today
+      if (isToday && start.getTime() < now.getTime() - 120000) {
         return { computedStart: start, computedEnd: null, computedDurationMinutes: durationMinutes, error: 'Start time cannot be in the past' };
       }
       const end = new Date(start.getTime() + durationMinutes * 60000);
@@ -146,12 +194,12 @@ export default function CreateEditScreen({ navigation, route }: Props) {
     }
 
     // start-end mode
-    const start = parseTimeToToday(startTimeInput);
-    const end = parseTimeToToday(endTimeInput);
+    const start = parseTimeToDate(startTimeInput, targetDate);
+    const end = parseTimeToDate(endTimeInput, targetDate);
     if (!start || !end) {
       return { computedStart: null, computedEnd: null, computedDurationMinutes: 0, error: 'Enter valid start and end times (HH:MM)' };
     }
-    if (start.getTime() < now.getTime() - 120000) {
+    if (isToday && start.getTime() < now.getTime() - 120000) {
       return { computedStart: start, computedEnd: end, computedDurationMinutes: 0, error: 'Start time cannot be in the past' };
     }
     if (end.getTime() <= start.getTime()) {
@@ -185,17 +233,41 @@ export default function CreateEditScreen({ navigation, route }: Props) {
 
   const handleSave = async () => {
     if (!title.trim()) {
-      Alert.alert('Missing Title', 'Please enter a title for this task.');
+      setAlertConfig({
+        visible: true,
+        title: 'Missing Title',
+        message: 'Please enter a title for this task.',
+        icon: 'alert-circle-outline',
+        iconColor: colors.warning || '#f59e0b',
+        buttons: [{ text: 'OK', onPress: () => setAlertConfig(null) }],
+        onDismiss: () => setAlertConfig(null),
+      });
       return;
     }
 
     if (taskType === 'allocated') {
       if (schedulingResult.error) {
-        Alert.alert('Invalid Time Schedule', schedulingResult.error);
+        setAlertConfig({
+          visible: true,
+          title: 'Invalid Time Schedule',
+          message: schedulingResult.error,
+          icon: 'time-outline',
+          iconColor: colors.error || '#ef4444',
+          buttons: [{ text: 'OK', onPress: () => setAlertConfig(null) }],
+          onDismiss: () => setAlertConfig(null),
+        });
         return;
       }
       if (!schedulingResult.computedStart || !schedulingResult.computedEnd) {
-        Alert.alert('Missing Schedule', 'Please provide valid start and end times.');
+        setAlertConfig({
+          visible: true,
+          title: 'Missing Schedule',
+          message: 'Please provide valid start and end times.',
+          icon: 'time-outline',
+          iconColor: colors.warning || '#f59e0b',
+          buttons: [{ text: 'OK', onPress: () => setAlertConfig(null) }],
+          onDismiss: () => setAlertConfig(null),
+        });
         return;
       }
     }
@@ -222,9 +294,31 @@ export default function CreateEditScreen({ navigation, route }: Props) {
           tags: selectedTags,
           endTime: initialStatus === 'completed' ? new Date() : undefined,
         });
-        Alert.alert('Updated', 'Task updated successfully.', [
-          { text: 'OK', onPress: () => navigation.goBack() },
-        ]);
+        const safeGoBack = () => {
+          if (navigation.canGoBack()) {
+            navigation.goBack();
+          } else {
+            navigation.navigate('MainTabs');
+          }
+        };
+
+        setAlertConfig({
+          visible: true,
+          title: 'Task Updated',
+          message: 'Your changes have been saved successfully.',
+          icon: 'checkmark-circle-outline',
+          iconColor: colors.success || '#10b981',
+          buttons: [
+            {
+              text: 'OK',
+              onPress: () => {
+                setAlertConfig(null);
+                safeGoBack();
+              },
+            },
+          ],
+          onDismiss: () => setAlertConfig(null),
+        });
       } else {
         await addTrack({
           title: title.trim(),
@@ -238,16 +332,47 @@ export default function CreateEditScreen({ navigation, route }: Props) {
           blockMultiplier: taskType === 'allocated' ? blockMultiplier : undefined,
           durationMinutes: schedulingResult.computedDurationMinutes || undefined,
           tags: selectedTags,
-          startTime: new Date(),
+          startTime: schedulingResult.computedStart || new Date(),
           endTime: initialStatus === 'completed' ? new Date() : undefined,
         });
-        Alert.alert('Created', 'Task created successfully.', [
-          { text: 'OK', onPress: () => navigation.goBack() },
-        ]);
+        const dateDesc = scheduledDateMode === 'today' ? 'today' : scheduledDateMode === 'tomorrow' ? 'tomorrow' : customScheduledDate;
+        const safeGoBack = () => {
+          if (navigation.canGoBack()) {
+            navigation.goBack();
+          } else {
+            navigation.navigate('MainTabs');
+          }
+        };
+
+        setAlertConfig({
+          visible: true,
+          title: 'Task Scheduled',
+          message: `Your task has been scheduled for ${dateDesc}.`,
+          icon: 'checkmark-circle-outline',
+          iconColor: colors.success || '#10b981',
+          buttons: [
+            {
+              text: 'OK',
+              onPress: () => {
+                setAlertConfig(null);
+                safeGoBack();
+              },
+            },
+          ],
+          onDismiss: () => setAlertConfig(null),
+        });
       }
     } catch (err: any) {
       console.error('[CreateEditScreen] Failed to save task:', err);
-      Alert.alert('Error', `Failed to save task: ${err?.message || 'Please try again.'}`);
+      setAlertConfig({
+        visible: true,
+        title: 'Save Failed',
+        message: 'Unable to save task. Please verify required fields and try again.',
+        icon: 'alert-circle-outline',
+        iconColor: colors.error || '#ef4444',
+        buttons: [{ text: 'OK', onPress: () => setAlertConfig(null) }],
+        onDismiss: () => setAlertConfig(null),
+      });
     }
   };
 
@@ -366,6 +491,40 @@ export default function CreateEditScreen({ navigation, route }: Props) {
               <AppIcon name="alarm-outline" size={18} color={colors.primary} />
               <Text style={s.subSectionTitle}>Time Allocation Interface</Text>
             </View>
+
+            {/* Scheduled Date Selector */}
+            <Text style={s.timeInputLabel}>Scheduled Date</Text>
+            <View style={s.dateModeRow}>
+              {(['today', 'tomorrow', 'custom'] as const).map((dm) => {
+                const active = scheduledDateMode === dm;
+                const label = dm === 'today' ? 'Today' : dm === 'tomorrow' ? 'Tomorrow' : 'Future Date';
+                return (
+                  <TouchableOpacity
+                    key={dm}
+                    style={[s.dateModeChip, active && s.dateModeChipActive]}
+                    onPress={() => setScheduledDateMode(dm)}
+                  >
+                    <Text style={[s.dateModeChipText, active && s.dateModeChipTextActive]}>
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {scheduledDateMode === 'custom' && (
+              <View style={s.customDateInputBox}>
+                <Text style={s.customDateHelpText}>Date (YYYY-MM-DD):</Text>
+                <TextInput
+                  style={s.customDateTextInput}
+                  value={customScheduledDate}
+                  onChangeText={setCustomScheduledDate}
+                  placeholder="2026-10-15"
+                  placeholderTextColor={colors.textTertiary}
+                  maxLength={10}
+                />
+              </View>
+            )}
 
             {/* Mode Selector */}
             <View style={s.modeSelector}>
@@ -571,6 +730,8 @@ export default function CreateEditScreen({ navigation, route }: Props) {
         </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {alertConfig && <ThemedAlert {...alertConfig} />}
     </SafeAreaView>
   );
 }
@@ -864,6 +1025,56 @@ function makeStyles(colors: any) {
       color: '#fff',
       fontSize: 16,
       fontWeight: 'bold',
+    },
+    dateModeRow: {
+      flexDirection: 'row',
+      gap: 8,
+      marginBottom: 12,
+    },
+    dateModeChip: {
+      flex: 1,
+      alignItems: 'center',
+      paddingVertical: 8,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    dateModeChipActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primary + '20',
+    },
+    dateModeChipText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    dateModeChipTextActive: {
+      color: colors.primary,
+      fontWeight: '700',
+    },
+    customDateInputBox: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 12,
+      backgroundColor: colors.surface,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    customDateHelpText: {
+      fontSize: 12,
+      color: colors.textSecondary,
+    },
+    customDateTextInput: {
+      flex: 1,
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.text,
+      paddingVertical: 4,
     },
   });
 }

@@ -47,7 +47,11 @@ export default function TrackDetailsScreen({ navigation, route }: Props) {
           style: 'destructive',
           onPress: () => {
             deleteTrack(id);
-            navigation.goBack();
+            if (navigation.canGoBack()) {
+              navigation.goBack();
+            } else {
+              navigation.navigate('MainTabs');
+            }
           },
         },
       ]

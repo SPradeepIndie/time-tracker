@@ -168,6 +168,21 @@ func Migrate(db *sql.DB) (error, string) {
 			);
 			CREATE INDEX IF NOT EXISTS idx_activity_logs_date ON routine_activity_logs(date);`,
 		},
+		{
+			name: "v5_goal_status_enum",
+			sql: `
+			-- Add status column (pending, completed, overdue, completed_overdue) to daily and weekly goals
+			ALTER TABLE daily_goals ADD COLUMN IF NOT EXISTS status VARCHAR(32) NOT NULL DEFAULT 'pending';
+			ALTER TABLE weekly_goals ADD COLUMN IF NOT EXISTS status VARCHAR(32) NOT NULL DEFAULT 'pending';
+			UPDATE daily_goals SET status = CASE WHEN is_completed = TRUE THEN 'completed' ELSE 'pending' END WHERE status = 'pending';
+			UPDATE weekly_goals SET status = CASE WHEN is_completed = TRUE THEN 'completed' ELSE 'pending' END WHERE status = 'pending';`,
+		},
+		{
+			name: "v6_track_position",
+			sql: `
+			-- Add position column for drag-and-drop custom ordering of tasks
+			ALTER TABLE tracker ADD COLUMN IF NOT EXISTS position INTEGER NOT NULL DEFAULT 0;`,
+		},
 	}
 
 	for _, m := range migrations {

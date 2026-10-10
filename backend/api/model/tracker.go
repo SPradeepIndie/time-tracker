@@ -58,6 +58,7 @@ type Tracker struct {
 	AllocatedEndTime   *time.Time `json:"allocated_end_time,omitempty" db:"allocated_end_time"`
 	BlockMultiplier    *int       `json:"block_multiplier,omitempty" db:"block_multiplier"`
 	DurationMinutes    *int       `json:"duration_minutes,omitempty" db:"duration_minutes"`
+	Position           int        `json:"position" db:"position"`
 
 	// Legacy fields kept for backward compat
 	StartTime time.Time  `json:"start_time" db:"start_time"`
@@ -77,6 +78,7 @@ type CreateTrackerRequest struct {
 	AllocatedStartTime *time.Time `json:"allocated_start_time,omitempty"`
 	AllocatedEndTime   *time.Time `json:"allocated_end_time,omitempty"`
 	BlockMultiplier    *int       `json:"block_multiplier,omitempty"`
+	Position           *int       `json:"position,omitempty"`
 	Tags        []string       `json:"tags,omitempty"`
 
 	// Legacy
@@ -92,6 +94,7 @@ type UpdateTrackerRequest struct {
 	AllocatedStartTime *time.Time `json:"allocated_start_time,omitempty"`
 	AllocatedEndTime   *time.Time `json:"allocated_end_time,omitempty"`
 	BlockMultiplier    *int       `json:"block_multiplier,omitempty"`
+	Position           *int       `json:"position,omitempty"`
 	StartTime   *time.Time     `json:"start_time,omitempty"`
 	EndTime     *time.Time     `json:"end_time,omitempty"`
 }
