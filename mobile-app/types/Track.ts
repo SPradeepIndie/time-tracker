@@ -58,6 +58,7 @@ export interface Track {
   allocatedEndTime?: Date;     // Validated: > allocatedStartTime
   blockMultiplier?: number;    // Number of 45-min blocks (1, 2, 3, ...)
   durationMinutes?: number;    // Derived: blockMultiplier * BLOCK_DURATION_MINUTES
+  position?: number;           // Order index for drag-and-drop custom ordering
 
   // General timestamps
   startTime: Date;    // Kept for backward compatibility / legacy records
@@ -122,5 +123,6 @@ export type RootStackParamList = {
   MainTabs: undefined;
   TrackDetails: { id: string };
   CreateEdit: { id?: string };
+  Blast: undefined;
   Info: undefined;
 };

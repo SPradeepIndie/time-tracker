@@ -8,6 +8,7 @@ import {
   DailyGoal,
   WeeklyGoal,
   WeeklyGoalCategory,
+  GoalStatus,
   MAX_DAILY_GOALS,
   MAX_CHILDREN_PER_TIER,
   MAX_TIERS,
@@ -20,6 +21,7 @@ interface DailyGoalRow {
   remote_id: number | null;
   date: string;
   text: string;
+  status: string;
   is_completed: number;
   position: number;
   created_at: string;
@@ -45,6 +47,7 @@ interface WeeklyGoalRow {
   parent_id: string | null;
   tier: number;
   text: string;
+  status: string;
   is_completed: number;
   position: number;
   created_at: string;
@@ -54,12 +57,14 @@ interface WeeklyGoalRow {
 // ── Converters ────────────────────────────────────────────────────────────────
 
 function rowToDailyGoal(row: DailyGoalRow): DailyGoal {
+  const status = (row.status as GoalStatus) || (row.is_completed === 1 ? 'completed' : 'pending');
   return {
     id: row.id,
     remoteId: row.remote_id ?? undefined,
     date: row.date,
     text: row.text,
-    isCompleted: row.is_completed === 1,
+    status,
+    isCompleted: status === 'completed' || status === 'completed_overdue',
     position: row.position,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
@@ -80,6 +85,7 @@ function rowToCategory(row: CategoryRow): WeeklyGoalCategory {
 }
 
 function rowToWeeklyGoal(row: WeeklyGoalRow): WeeklyGoal {
+  const status = (row.status as GoalStatus) || (row.is_completed === 1 ? 'completed' : 'pending');
   return {
     id: row.id,
     remoteId: row.remote_id ?? undefined,
@@ -88,7 +94,8 @@ function rowToWeeklyGoal(row: WeeklyGoalRow): WeeklyGoal {
     parentId: row.parent_id,
     tier: row.tier as 1 | 2 | 3,
     text: row.text,
-    isCompleted: row.is_completed === 1,
+    status,
+    isCompleted: status === 'completed' || status === 'completed_overdue',
     position: row.position,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
@@ -110,9 +117,41 @@ export async function queryGetDailyGoalsByDate(
   return rows.map(rowToDailyGoal);
 }
 
+/**
+ * Returns today's goals plus any active overdue goals from past dates.
+ */
+export async function queryGetActiveDailyGoals(
+  db: SQLiteDatabase,
+  today: string
+): Promise<DailyGoal[]> {
+  const rows = await db.getAllAsync<DailyGoalRow>(
+    `SELECT * FROM daily_goals
+     WHERE date = ? OR (status = 'overdue' AND date < ?)
+     ORDER BY CASE WHEN status = 'overdue' THEN 0 ELSE 1 END, position ASC;`,
+    [today, today]
+  );
+  return rows.map(rowToDailyGoal);
+}
+
+/**
+ * Transitions past uncompleted daily goals from 'pending' to 'overdue'.
+ */
+export async function queryTransitionOverdueDailyGoals(
+  db: SQLiteDatabase,
+  today: string
+): Promise<void> {
+  const now = new Date().toISOString();
+  await db.runAsync(
+    `UPDATE daily_goals
+     SET status = 'overdue', updated_at = ?
+     WHERE date < ? AND status = 'pending';`,
+    [now, today]
+  );
+}
+
 export async function queryCreateDailyGoal(
   db: SQLiteDatabase,
-  goal: Omit<DailyGoal, 'createdAt' | 'updatedAt'>
+  goal: Omit<DailyGoal, 'createdAt' | 'updatedAt' | 'status'>
 ): Promise<DailyGoal> {
   // Enforce cap
   const existing = await queryGetDailyGoalsByDate(db, goal.date);
@@ -121,22 +160,45 @@ export async function queryCreateDailyGoal(
   }
   const now = new Date().toISOString();
   await db.runAsync(
-    `INSERT INTO daily_goals (id, remote_id, date, text, is_completed, position, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 0, ?, ?, ?);`,
+    `INSERT INTO daily_goals (id, remote_id, date, text, status, is_completed, position, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'pending', 0, ?, ?, ?);`,
     [goal.id, goal.remoteId ?? null, goal.date, goal.text, goal.position, now, now]
   );
-  return { ...goal, isCompleted: false, createdAt: new Date(now), updatedAt: new Date(now) };
+  return { ...goal, status: 'pending', isCompleted: false, createdAt: new Date(now), updatedAt: new Date(now) };
 }
 
 export async function queryUpdateDailyGoalCompletion(
   db: SQLiteDatabase,
   id: string,
-  isCompleted: boolean
-): Promise<void> {
-  await db.runAsync(
-    'UPDATE daily_goals SET is_completed=?, updated_at=? WHERE id=?;',
-    [isCompleted ? 1 : 0, new Date().toISOString(), id]
+  isCompleted: boolean,
+  today?: string
+): Promise<GoalStatus> {
+  const row = await db.getFirstAsync<DailyGoalRow>(
+    'SELECT * FROM daily_goals WHERE id = ?;',
+    [id]
   );
+  const now = new Date().toISOString();
+  let newStatus: GoalStatus;
+
+  if (isCompleted) {
+    if (row && (row.status === 'overdue' || (today && row.date < today))) {
+      newStatus = 'completed_overdue';
+    } else {
+      newStatus = 'completed';
+    }
+  } else {
+    if (row && (row.status === 'completed_overdue' || (today && row.date < today))) {
+      newStatus = 'overdue';
+    } else {
+      newStatus = 'pending';
+    }
+  }
+
+  await db.runAsync(
+    'UPDATE daily_goals SET status=?, is_completed=?, updated_at=? WHERE id=?;',
+    [newStatus, isCompleted ? 1 : 0, now, id]
+  );
+  return newStatus;
 }
 
 export async function queryUpdateDailyGoalText(
@@ -214,9 +276,41 @@ export async function queryGetWeeklyGoalsByWeek(
   return rows.map(rowToWeeklyGoal);
 }
 
+/**
+ * Returns active weekly goals for the given week, including past uncompleted goals marked overdue.
+ */
+export async function queryGetActiveWeeklyGoals(
+  db: SQLiteDatabase,
+  currentWeek: string
+): Promise<WeeklyGoal[]> {
+  const rows = await db.getAllAsync<WeeklyGoalRow>(
+    `SELECT * FROM weekly_goals
+     WHERE week_label = ? OR (status = 'overdue' AND week_label < ?)
+     ORDER BY CASE WHEN status = 'overdue' THEN 0 ELSE 1 END, tier ASC, position ASC;`,
+    [currentWeek, currentWeek]
+  );
+  return rows.map(rowToWeeklyGoal);
+}
+
+/**
+ * Transitions past uncompleted weekly goals from 'pending' to 'overdue'.
+ */
+export async function queryTransitionOverdueWeeklyGoals(
+  db: SQLiteDatabase,
+  currentWeek: string
+): Promise<void> {
+  const now = new Date().toISOString();
+  await db.runAsync(
+    `UPDATE weekly_goals
+     SET status = 'overdue', updated_at = ?
+     WHERE week_label < ? AND status = 'pending';`,
+    [now, currentWeek]
+  );
+}
+
 export async function queryCreateWeeklyGoal(
   db: SQLiteDatabase,
-  goal: Omit<WeeklyGoal, 'createdAt' | 'updatedAt'>
+  goal: Omit<WeeklyGoal, 'createdAt' | 'updatedAt' | 'status'>
 ): Promise<WeeklyGoal> {
   // Enforce tier and child cap
   if (goal.tier > MAX_TIERS) throw new Error(`Maximum tier is ${MAX_TIERS}.`);
@@ -232,25 +326,48 @@ export async function queryCreateWeeklyGoal(
   const now = new Date().toISOString();
   await db.runAsync(
     `INSERT INTO weekly_goals
-       (id, remote_id, week_label, category_id, parent_id, tier, text, is_completed, position, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,0,?,?,?);`,
+       (id, remote_id, week_label, category_id, parent_id, tier, text, status, is_completed, position, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?, 'pending', 0,?,?,?);`,
     [
       goal.id, goal.remoteId ?? null, goal.weekLabel, goal.categoryId,
       goal.parentId, goal.tier, goal.text, goal.position, now, now,
     ]
   );
-  return { ...goal, isCompleted: false, createdAt: new Date(now), updatedAt: new Date(now) };
+  return { ...goal, status: 'pending', isCompleted: false, createdAt: new Date(now), updatedAt: new Date(now) };
 }
 
 export async function queryUpdateWeeklyGoalCompletion(
   db: SQLiteDatabase,
   id: string,
-  isCompleted: boolean
-): Promise<void> {
-  await db.runAsync(
-    'UPDATE weekly_goals SET is_completed=?, updated_at=? WHERE id=?;',
-    [isCompleted ? 1 : 0, new Date().toISOString(), id]
+  isCompleted: boolean,
+  currentWeek?: string
+): Promise<GoalStatus> {
+  const row = await db.getFirstAsync<WeeklyGoalRow>(
+    'SELECT * FROM weekly_goals WHERE id = ?;',
+    [id]
   );
+  const now = new Date().toISOString();
+  let newStatus: GoalStatus;
+
+  if (isCompleted) {
+    if (row && (row.status === 'overdue' || (currentWeek && row.week_label < currentWeek))) {
+      newStatus = 'completed_overdue';
+    } else {
+      newStatus = 'completed';
+    }
+  } else {
+    if (row && (row.status === 'completed_overdue' || (currentWeek && row.week_label < currentWeek))) {
+      newStatus = 'overdue';
+    } else {
+      newStatus = 'pending';
+    }
+  }
+
+  await db.runAsync(
+    'UPDATE weekly_goals SET status=?, is_completed=?, updated_at=? WHERE id=?;',
+    [newStatus, isCompleted ? 1 : 0, now, id]
+  );
+  return newStatus;
 }
 
 export async function queryUpdateWeeklyGoalText(

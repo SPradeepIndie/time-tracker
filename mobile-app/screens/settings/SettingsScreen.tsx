@@ -29,6 +29,12 @@ import { AppIcon } from '../../components/ui/AppIcon';
 import SyncStatusBadge from '../../components/sync/SyncStatusBadge';
 import { useTrackContext } from '../../context/TrackContext';
 import { getStorageStats, formatBytes, StorageDetailStats } from '../../services/storage/db';
+import {
+  AnalyticsWeights,
+  loadAnalyticsWeights,
+  saveAnalyticsWeights,
+  DEFAULT_ANALYTICS_WEIGHTS,
+} from '../../services/analytics/analytics';
 
 interface Props {
   navigation: SettingsScreenNavigationProp;
@@ -164,6 +170,7 @@ export default function SettingsScreen({ navigation }: Props) {
 
   const [taskSortBy, setTaskSortBy] = useState<'priority' | 'status'>('priority');
   const [taskSortOrder, setTaskSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [weights, setWeights] = useState<AnalyticsWeights>(DEFAULT_ANALYTICS_WEIGHTS);
 
   useEffect(() => {
     (async () => {
@@ -175,8 +182,60 @@ export default function SettingsScreen({ navigation }: Props) {
       if (savedSortOrder === 'asc' || savedSortOrder === 'desc') {
         setTaskSortOrder(savedSortOrder);
       }
+      const savedWeights = await loadAnalyticsWeights();
+      setWeights(savedWeights);
     })();
   }, []);
+
+  const handleSetWeightPreset = async (tasks: number, goals: number, routines: number) => {
+    const updated = { tasks, goals, routines };
+    setWeights(updated);
+    await saveAnalyticsWeights(updated);
+  };
+
+  const handleAdjustWeight = async (key: keyof AnalyticsWeights, deltaPercent: number) => {
+    const curT = Math.round(weights.tasks * 100);
+    const curG = Math.round(weights.goals * 100);
+    const curR = Math.round(weights.routines * 100);
+
+    let newT = curT;
+    let newG = curG;
+    let newR = curR;
+
+    if (key === 'tasks') {
+      newT = Math.max(5, Math.min(90, curT + deltaPercent));
+      const rem = 100 - newT;
+      const other = curG + curR;
+      if (other > 0) {
+        newG = Math.round(rem * (curG / other));
+        newR = 100 - newT - newG;
+      }
+    } else if (key === 'goals') {
+      newG = Math.max(5, Math.min(90, curG + deltaPercent));
+      const rem = 100 - newG;
+      const other = curT + curR;
+      if (other > 0) {
+        newT = Math.round(rem * (curT / other));
+        newR = 100 - newG - newT;
+      }
+    } else {
+      newR = Math.max(5, Math.min(90, curR + deltaPercent));
+      const rem = 100 - newR;
+      const other = curT + curG;
+      if (other > 0) {
+        newT = Math.round(rem * (curT / other));
+        newG = 100 - newR - newT;
+      }
+    }
+
+    const updated: AnalyticsWeights = {
+      tasks: newT / 100,
+      goals: newG / 100,
+      routines: newR / 100,
+    };
+    setWeights(updated);
+    await saveAnalyticsWeights(updated);
+  };
 
   const handleUpdateSortBy = async (sortBy: 'priority' | 'status') => {
     setTaskSortBy(sortBy);
@@ -267,6 +326,78 @@ export default function SettingsScreen({ navigation }: Props) {
                   <Text style={[s.segmentText, taskSortOrder === 'desc' && s.segmentTextActive]}>Descending</Text>
                 </TouchableOpacity>
               </View>
+            </View>
+          </Card>
+
+          {/* ── Daily Progress Calculation ───────────────────────────── */}
+          <View style={s.sectionHeader}>
+            <AppIcon name="calculator" size={16} color={colors.textTertiary} />
+            <Text style={s.sectionTitle}>Daily Progress Calculation</Text>
+          </View>
+          <Card>
+            <View style={{ padding: 16 }}>
+              <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 12 }}>
+                Configure how much each module contributes to your Overall Day Progress score (must total 100%).
+              </Text>
+
+              {/* Presets */}
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+                {[
+                  { label: 'Default\n(40/35/25)', t: 0.40, g: 0.35, r: 0.25 },
+                  { label: 'Balanced\n(34/33/33)', t: 0.34, g: 0.33, r: 0.33 },
+                  { label: 'Task Focus\n(60/20/20)', t: 0.60, g: 0.20, r: 0.20 },
+                ].map((p) => {
+                  const isActive =
+                    Math.round(weights.tasks * 100) === Math.round(p.t * 100) &&
+                    Math.round(weights.goals * 100) === Math.round(p.g * 100) &&
+                    Math.round(weights.routines * 100) === Math.round(p.r * 100);
+                  return (
+                    <TouchableOpacity
+                      key={p.label}
+                      style={[
+                        s.presetChip,
+                        isActive && { backgroundColor: colors.primary + '20', borderColor: colors.primary },
+                      ]}
+                      onPress={() => handleSetWeightPreset(p.t, p.g, p.r)}
+                    >
+                      <Text style={[s.presetChipText, isActive && { color: colors.primary, fontWeight: '700' }]}>
+                        {p.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Steppers */}
+              {[
+                { key: 'tasks' as const, label: 'Tasks', color: colors.primary, val: Math.round(weights.tasks * 100) },
+                { key: 'goals' as const, label: 'Daily Goals', color: '#7C3AED', val: Math.round(weights.goals * 100) },
+                { key: 'routines' as const, label: 'Routines', color: '#06B6D4', val: Math.round(weights.routines * 100) },
+              ].map((item, idx) => (
+                <View key={item.key} style={{ marginTop: idx > 0 ? 12 : 0 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text }}>{item.label}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <TouchableOpacity
+                        style={s.stepperBtn}
+                        onPress={() => handleAdjustWeight(item.key, -5)}
+                      >
+                        <Text style={s.stepperBtnText}>−</Text>
+                      </TouchableOpacity>
+                      <Text style={[s.weightValueText, { color: item.color }]}>{item.val}%</Text>
+                      <TouchableOpacity
+                        style={s.stepperBtn}
+                        onPress={() => handleAdjustWeight(item.key, 5)}
+                      >
+                        <Text style={s.stepperBtnText}>+</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  <View style={s.weightBar}>
+                    <View style={[s.weightBarFill, { width: `${item.val}%`, backgroundColor: item.color }]} />
+                  </View>
+                </View>
+              ))}
             </View>
           </Card>
 
@@ -512,6 +643,55 @@ function makeStyles(colors: any) {
     toggleContainer: {
       width: 56,
       alignItems: 'flex-end',
+    },
+    presetChip: {
+      flex: 1,
+      paddingVertical: 8,
+      paddingHorizontal: 4,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surface,
+    },
+    presetChipText: {
+      fontSize: 10,
+      color: colors.textSecondary,
+      textAlign: 'center',
+    },
+    stepperBtn: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surface,
+    },
+    stepperBtnText: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: colors.text,
+      lineHeight: 18,
+    },
+    weightValueText: {
+      fontSize: 15,
+      fontWeight: '800',
+      minWidth: 42,
+      textAlign: 'center',
+    },
+    weightBar: {
+      height: 6,
+      backgroundColor: colors.border,
+      borderRadius: 3,
+      marginTop: 6,
+      overflow: 'hidden',
+    },
+    weightBarFill: {
+      height: '100%',
+      borderRadius: 3,
     },
   });
 }

@@ -1,10 +1,3 @@
-/**
- * AnalyticsScreen.tsx
- *
- * Mathematical analytics dashboard.
- * Displays T_prod, G_day, R_day, P_day and 7-day rolling graphs
- * for Tasks, Goals, and Routines, plus weekly category progression matrix.
- */
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity,
@@ -19,15 +12,13 @@ import {
   calculateWeeklyAnalytics,
   formatProductivityTime,
   getProgressColor,
+  loadAnalyticsWeights,
   DailyAnalytics,
   WeeklyAnalytics,
-  ANALYTICS_WEIGHTS,
 } from '../../services/analytics/analytics';
-import { getWeekLabel } from '../../types/Goal';
+import { getAppTodayDateString, getAppWeekLabel } from '../../utils/dateUtils';
 
 interface Props { navigation: AnalyticsScreenNavigationProp; }
-
-import { getAppTodayDateString, getAppWeekLabel } from '../../utils/dateUtils';
 
 export default function AnalyticsScreen({ navigation }: Props) {
   const { colors } = useTheme();
@@ -41,10 +32,13 @@ export default function AnalyticsScreen({ navigation }: Props) {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const db = await getDatabase();
+    const [weights, db] = await Promise.all([
+      loadAnalyticsWeights(),
+      getDatabase(),
+    ]);
     const [d, w] = await Promise.all([
-      calculateDailyAnalytics(db, today),
-      calculateWeeklyAnalytics(db, weekLabel),
+      calculateDailyAnalytics(db, today, weights),
+      calculateWeeklyAnalytics(db, weekLabel, weights),
     ]);
     setDaily(d);
     setWeekly(w);
@@ -67,7 +61,7 @@ export default function AnalyticsScreen({ navigation }: Props) {
     </View>
   );
 
-  // ── Mini bar chart for 7-day rolling history ─────────────────────────────
+  // ── Mini bar chart for weekly calendar history ─────────────────────────────
 
   const MiniBar = ({ value, max = 100, color }: { value: number; max?: number; color: string }) => {
     const pct = max > 0 ? Math.min(1, value / max) : 0;
@@ -79,7 +73,6 @@ export default function AnalyticsScreen({ navigation }: Props) {
       </View>
     );
   };
-
 
   if (loading) {
     return (
@@ -121,36 +114,35 @@ export default function AnalyticsScreen({ navigation }: Props) {
         <ScrollView contentContainerStyle={s.scrollContent}>
           {view === 'daily' && daily && (
             <>
-              {/* Overall Progress P_day — hero card */}
+              {/* Overall Day Progress Hero Card */}
               <View style={[s.heroCard, { backgroundColor: colors.card }]}>
-                <Text style={s.heroLabel}>Overall Day Progress · P_day</Text>
+                <Text style={s.heroLabel}>Overall Day Progress</Text>
                 <Text style={[s.heroValue, { color: getProgressColor(daily.overallProgress) }]}>
                   {daily.overallProgress}%
                 </Text>
-                <Text style={s.heroFormula}>
-                  = {ANALYTICS_WEIGHTS.W1}×{daily.taskCompletionRate}% + {ANALYTICS_WEIGHTS.W2}×{daily.goalHitRate}% + {ANALYTICS_WEIGHTS.W3}×{daily.routineHitRate}%
+                <Text style={s.heroSubtitle}>
+                  Combined daily achievement
                 </Text>
                 <View style={s.heroBar}>
                   <View style={[s.heroBarFill, { width: `${daily.overallProgress}%` as any, backgroundColor: getProgressColor(daily.overallProgress) }]} />
                 </View>
               </View>
 
-              {/* T_prod — Productivity Time */}
+              {/* Productivity Time Card */}
               <View style={[s.metricCard, { backgroundColor: colors.card }]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                   <AppIcon name="timer" size={18} color={colors.primary} />
-                  <Text style={s.metricTitle}>Productivity Time · T_prod</Text>
+                  <Text style={s.metricTitle}>Productivity Time</Text>
                 </View>
                 <Text style={[s.metricBig, { color: colors.primary }]}>
                   {formatProductivityTime(daily.productivityMinutes)}
                 </Text>
                 <Text style={s.metricSub}>
-                  From {daily.completedTasks} completed / {daily.totalTasks} total tasks
+                  Total focused task duration ({daily.completedTasks} completed / {daily.totalTasks} total tasks)
                 </Text>
-                <Text style={s.formulaText}>T_prod = Σ t_spent(i) for completed & in-progress tasks</Text>
               </View>
 
-              {/* 3 Gauge cards */}
+              {/* 3 Gauge cards: Tasks, Daily Goals, Routines */}
               <View style={s.gaugeRow}>
                 <Gauge
                   value={daily.taskCompletionRate}
@@ -159,7 +151,7 @@ export default function AnalyticsScreen({ navigation }: Props) {
                 />
                 <Gauge
                   value={daily.goalHitRate}
-                  label={`Goals\n${daily.completedGoals}/${daily.totalGoals}`}
+                  label={`Daily Goals\n${daily.completedGoals}/${daily.totalGoals}`}
                   color="#7C3AED"
                 />
                 <Gauge
@@ -168,24 +160,16 @@ export default function AnalyticsScreen({ navigation }: Props) {
                   color="#06B6D4"
                 />
               </View>
-
-              {/* Formula breakdown cards */}
-              <View style={[s.formulaCard, { backgroundColor: colors.card }]}>
-                <Text style={s.metricTitle}>📐 Formula Breakdown</Text>
-                <FormulaRow label="G_day (Goal Hit Rate)" value={daily.goalHitRate} formula={`${daily.completedGoals} / ${daily.totalGoals} × 100%`} color="#7C3AED" />
-                <FormulaRow label="R_day (Routine Hit Rate)" value={daily.routineHitRate} formula={`${daily.checkedActivities} / ${daily.totalActivities} × 100%`} color="#06B6D4" />
-                <FormulaRow label="Task Completion Rate" value={daily.taskCompletionRate} formula={`${daily.completedTasks} / ${daily.totalTasks} × 100%`} color={colors.primary} />
-              </View>
             </>
           )}
 
           {view === 'weekly' && weekly && (
             <>
-              {/* 7-day trend chart */}
+              {/* Weekly Calendar History chart */}
               <View style={[s.metricCard, { backgroundColor: colors.card }]}>
-                <Text style={s.metricTitle}>📈 7-Day Rolling History</Text>
+                <Text style={s.metricTitle}>Weekly History</Text>
                 <View style={s.chartGrid}>
-                  {weekly.dailyHistory.map((d, i) => {
+                  {weekly.dailyHistory.map((d) => {
                     const dayLabel = new Date(d.date).toLocaleDateString('en-US', { weekday: 'short' });
                     return (
                       <View key={d.date} style={s.chartColumn}>
@@ -207,17 +191,17 @@ export default function AnalyticsScreen({ navigation }: Props) {
                 </View>
               </View>
 
-              {/* Category Progression Matrix */}
+              {/* Category Progress Matrix */}
               <View style={[s.metricCard, { backgroundColor: colors.card }]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                   <AppIcon name="folder" size={18} color={colors.primary} />
-                  <Text style={s.metricTitle}>Category Progression · P_category(c)</Text>
+                  <Text style={s.metricTitle}>Category Progress</Text>
                 </View>
-                <Text style={s.formulaText}>
-                  P_category = (Completed Goals + Sub-goals) / (Total Goals + Sub-goals) × 100%
+                <Text style={s.metricSub}>
+                  Weekly goal completion across categories
                 </Text>
                 {weekly.categoryStats.length === 0 && (
-                  <Text style={s.metricSub}>No weekly goals set yet.</Text>
+                  <Text style={[s.metricSub, { marginTop: 8 }]}>No weekly goals set yet.</Text>
                 )}
                 {weekly.categoryStats.map((cat) => (
                   <View key={cat.categoryId} style={s.catStatRow}>
@@ -239,12 +223,12 @@ export default function AnalyticsScreen({ navigation }: Props) {
                   <Text style={s.metricTitle}>Weekly Averages</Text>
                 </View>
                 {[
-                  { label: 'Avg Task Rate', value: avg(weekly.dailyHistory.map(d => d.taskCompletionRate)), color: colors.primary },
-                  { label: 'Avg Goal Rate', value: avg(weekly.dailyHistory.map(d => d.goalHitRate)), color: '#7C3AED' },
-                  { label: 'Avg Routine Rate', value: avg(weekly.dailyHistory.map(d => d.routineHitRate)), color: '#06B6D4' },
-                  { label: 'Avg Overall P_day', value: avg(weekly.dailyHistory.map(d => d.overallProgress)), color: getProgressColor(avg(weekly.dailyHistory.map(d => d.overallProgress))) },
+                  { label: 'Avg Tasks Rate', value: avg(weekly.dailyHistory.map(d => d.taskCompletionRate)), color: colors.primary },
+                  { label: 'Avg Daily Goals Rate', value: avg(weekly.dailyHistory.map(d => d.goalHitRate)), color: '#7C3AED' },
+                  { label: 'Avg Routines Rate', value: avg(weekly.dailyHistory.map(d => d.routineHitRate)), color: '#06B6D4' },
+                  { label: 'Avg Daily Progress', value: avg(weekly.dailyHistory.map(d => d.overallProgress)), color: getProgressColor(avg(weekly.dailyHistory.map(d => d.overallProgress))) },
                 ].map(({ label, value, color }) => (
-                  <FormulaRow key={label} label={label} value={value} formula="" color={color} />
+                  <SummaryRow key={label} label={label} value={value} color={color} />
                 ))}
               </View>
             </>
@@ -260,7 +244,7 @@ function avg(arr: number[]): number {
   return Math.round(arr.reduce((s, v) => s + v, 0) / arr.length);
 }
 
-function FormulaRow({ label, value, formula, color }: { label: string; value: number; formula: string; color: string }) {
+function SummaryRow({ label, value, color }: { label: string; value: number; color: string }) {
   const { colors } = useTheme();
   return (
     <View style={{ marginVertical: 6 }}>
@@ -268,7 +252,6 @@ function FormulaRow({ label, value, formula, color }: { label: string; value: nu
         <Text style={{ fontSize: 13, color: colors.text, fontWeight: '600' }}>{label}</Text>
         <Text style={{ fontSize: 15, fontWeight: '800', color }}>{value}%</Text>
       </View>
-      {formula ? <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>{formula}</Text> : null}
       <View style={{ height: 4, backgroundColor: colors.border, borderRadius: 2, marginTop: 4, overflow: 'hidden' }}>
         <View style={{ height: '100%', width: `${value}%` as any, backgroundColor: color, borderRadius: 2 }} />
       </View>
@@ -303,10 +286,10 @@ function makeStyles(colors: any) {
       alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.08,
       shadowRadius: 12, elevation: 4,
     },
-    heroLabel: { fontSize: 13, color: '#888', fontWeight: '600', marginBottom: 8 },
+    heroLabel: { fontSize: 13, color: colors.textSecondary, fontWeight: '600', marginBottom: 8 },
     heroValue: { fontSize: 64, fontWeight: '900', lineHeight: 70 },
-    heroFormula: { fontSize: 12, color: '#888', marginTop: 8, textAlign: 'center' },
-    heroBar: { height: 8, backgroundColor: '#e5e7eb', borderRadius: 4, width: '100%', marginTop: 16, overflow: 'hidden' },
+    heroSubtitle: { fontSize: 13, color: colors.textSecondary, marginTop: 4, textAlign: 'center' },
+    heroBar: { height: 8, backgroundColor: colors.border, borderRadius: 4, width: '100%', marginTop: 16, overflow: 'hidden' },
     heroBarFill: { height: '100%', borderRadius: 4 },
 
     metricCard: {
@@ -316,7 +299,6 @@ function makeStyles(colors: any) {
     metricTitle: { fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 12 },
     metricBig: { fontSize: 42, fontWeight: '900', lineHeight: 48 },
     metricSub: { fontSize: 13, color: colors.textSecondary, marginTop: 4 },
-    formulaText: { fontSize: 11, color: colors.textSecondary, marginTop: 8, fontStyle: 'italic' },
 
     gaugeRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 16 },
     gaugeContainer: { alignItems: 'center', width: '28%' },
@@ -324,11 +306,6 @@ function makeStyles(colors: any) {
     gaugeFill: { width: '100%', borderRadius: 6 },
     gaugeValue: { fontSize: 18, fontWeight: '800' },
     gaugeLabel: { fontSize: 11, color: colors.textSecondary, textAlign: 'center', marginTop: 2 },
-
-    formulaCard: {
-      borderRadius: 16, padding: 16, marginBottom: 16,
-      shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
-    },
 
     chartGrid: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: 140, marginTop: 8 },
     chartColumn: { flex: 1, alignItems: 'center', marginHorizontal: 2 },

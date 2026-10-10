@@ -13,6 +13,14 @@
  *  - Each tier capped at 5 child items
  */
 
+// ─── Goal Status Enum ─────────────────────────────────────────────────────────
+
+export type GoalStatus =
+  | 'pending'            // Goal is active for its original scheduled day/week
+  | 'completed'          // Achieved on time within its scheduled window
+  | 'overdue'            // Time limit passed without completion; still active
+  | 'completed_overdue';  // Achieved after being overdue (persisted in DB)
+
 // ─── Daily Goals ─────────────────────────────────────────────────────────────
 
 export interface DailyGoal {
@@ -20,7 +28,8 @@ export interface DailyGoal {
   remoteId?: number;       // Backend integer ID when synced
   date: string;            // ISO date string (YYYY-MM-DD) — the TARGET day (tomorrow at creation time)
   text: string;            // Goal description
-  isCompleted: boolean;
+  status: GoalStatus;      // 'pending' | 'completed' | 'overdue' | 'completed_overdue'
+  isCompleted: boolean;    // Derived: status === 'completed' || status === 'completed_overdue'
   position: number;        // Display order (1..10)
   createdAt: Date;
   updatedAt: Date;
@@ -68,7 +77,8 @@ export interface WeeklyGoal {
   parentId: string | null; // null for Tier 1; parent goal ID for Tiers 2 & 3
   tier: 1 | 2 | 3;        // Hierarchy level
   text: string;
-  isCompleted: boolean;
+  status: GoalStatus;      // 'pending' | 'completed' | 'overdue' | 'completed_overdue'
+  isCompleted: boolean;    // Derived: status === 'completed' || status === 'completed_overdue'
   position: number;        // Display order among siblings
   createdAt: Date;
   updatedAt: Date;

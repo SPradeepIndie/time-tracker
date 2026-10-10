@@ -17,6 +17,7 @@ import {
   queryAddTag,
   queryRemoveTag,
   queryClearAll,
+  queryUpdateTrackPositions,
 } from '../services/storage/trackQueries';
 
 /**
@@ -82,6 +83,11 @@ export class LocalStorageAdapter implements ITrackRepository {
   async removeTag(trackId: string, tag: string): Promise<Track> {
     const db = await getDatabase();
     return queryRemoveTag(db, trackId, tag, await this.key());
+  }
+
+  async updatePositions(items: { id: string; position: number }[]): Promise<void> {
+    const db = await getDatabase();
+    return queryUpdateTrackPositions(db, items);
   }
 
   /**

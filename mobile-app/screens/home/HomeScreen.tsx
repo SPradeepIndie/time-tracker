@@ -53,6 +53,16 @@ function formatDisplayTime(d: Date | string | undefined): string {
   return `${displayH}:${formatTwoDigits(m)} ${ampm}`;
 }
 
+function getScheduledDateLabel(d: Date): string {
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return 'Today';
+  const tm = new Date();
+  tm.setDate(tm.getDate() + 1);
+  if (d.toDateString() === tm.toDateString()) return 'Tomorrow';
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${months[d.getMonth()]} ${d.getDate()}`;
+}
+
 const STATUS_CONFIG: Record<
   TaskStatus,
   { label: string; color: string; icon: string; family?: 'ionicons' | 'feather' | 'material' }
@@ -65,12 +75,14 @@ const STATUS_CONFIG: Record<
 };
 
 export default function HomeScreen({ navigation }: Props) {
-  const { tracks, deleteTrack, updateTrack, searchTracks, refreshTracks, addTrack } = useTrackContext();
+  const { tracks, deleteTrack, updateTrack, searchTracks, refreshTracks, addTrack, reorderTracks } = useTrackContext();
   const { colors } = useTheme();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterType>('unallocated');
   const [refreshing, setRefreshing] = useState(false);
+  const [isReorderMode, setIsReorderMode] = useState(false);
+  const [showFabActionModal, setShowFabActionModal] = useState(false);
 
   // Sorting state (configured via Settings)
   const [taskSortBy, setTaskSortBy] = useState<'priority' | 'status'>('priority');
@@ -153,6 +165,9 @@ export default function HomeScreen({ navigation }: Props) {
 
   // Sort tasks
   const sortedTracks = [...filteredTracks].sort((a, b) => {
+    if (isReorderMode) {
+      return (a.position ?? 0) - (b.position ?? 0);
+    }
     if (taskSortBy === 'priority') {
       const pWeights: Record<string, number> = { high: 3, medium: 2, low: 1 };
       const diff = (pWeights[b.priority] || 0) - (pWeights[a.priority] || 0);
@@ -169,6 +184,18 @@ export default function HomeScreen({ navigation }: Props) {
       return taskSortOrder === 'asc' ? -diff : diff;
     }
   });
+
+  const handleMoveTask = async (index: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= sortedTracks.length) return;
+
+    const currentList = [...sortedTracks];
+    const [moved] = currentList.splice(index, 1);
+    currentList.splice(targetIndex, 0, moved);
+
+    const reorderedItems = currentList.map((t, idx) => ({ id: t.id, position: idx }));
+    await reorderTracks(reorderedItems);
+  };
 
   const getGroupKey = (track: Track): string => {
     if (taskSortBy === 'priority') {
@@ -226,7 +253,7 @@ export default function HomeScreen({ navigation }: Props) {
             placeholder="Search tasks by title, tag, description…"
             value={searchQuery}
             onChangeText={setSearchQuery}
-            icon="🔍"
+            icon={<AppIcon name="search-outline" size={18} color={colors.textSecondary} />}
           />
         </View>
 
@@ -269,6 +296,26 @@ export default function HomeScreen({ navigation }: Props) {
               );
             })}
           </ScrollView>
+        </View>
+
+        {/* ── List Meta & Reorder Toggle ─────────────────────────── */}
+        <View style={s.listMetaRow}>
+          <Text style={s.listMetaCount}>
+            {sortedTracks.length} {sortedTracks.length === 1 ? 'task' : 'tasks'}
+          </Text>
+          <TouchableOpacity
+            style={[s.reorderToggleBtn, isReorderMode && s.reorderToggleBtnActive]}
+            onPress={() => setIsReorderMode((prev) => !prev)}
+          >
+            <AppIcon
+              name="reorder-two-outline"
+              size={16}
+              color={isReorderMode ? colors.primary : colors.textSecondary}
+            />
+            <Text style={[s.reorderToggleText, isReorderMode && s.reorderToggleTextActive]}>
+              {isReorderMode ? 'Done' : 'Reorder'}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* ── Task List ──────────────────────────────────────────── */}
@@ -322,6 +369,48 @@ export default function HomeScreen({ navigation }: Props) {
                       </View>
                     </View>
 
+                    {/* Reorder Buttons Row (when in Reorder Mode) */}
+                    {isReorderMode && (
+                      <View style={s.reorderControlsRow}>
+                        <Text style={s.reorderPosText}>Position #{index + 1}</Text>
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                          <TouchableOpacity
+                            style={[s.reorderBtn, index === 0 && s.reorderBtnDisabled]}
+                            onPress={() => handleMoveTask(index, 'up')}
+                            disabled={index === 0}
+                          >
+                            <AppIcon
+                              name="chevron-up"
+                              size={16}
+                              color={index === 0 ? colors.border : colors.primary}
+                            />
+                            <Text style={[s.reorderBtnText, index === 0 && { color: colors.border }]}>
+                              Move Up
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[s.reorderBtn, index === sortedTracks.length - 1 && s.reorderBtnDisabled]}
+                            onPress={() => handleMoveTask(index, 'down')}
+                            disabled={index === sortedTracks.length - 1}
+                          >
+                            <AppIcon
+                              name="chevron-down"
+                              size={16}
+                              color={index === sortedTracks.length - 1 ? colors.border : colors.primary}
+                            />
+                            <Text
+                              style={[
+                                s.reorderBtnText,
+                                index === sortedTracks.length - 1 && { color: colors.border },
+                              ]}
+                            >
+                              Move Down
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    )}
+
                     {/* Description */}
                     {!!item.description && (
                       <Text style={s.trackDescription} numberOfLines={2}>
@@ -342,8 +431,12 @@ export default function HomeScreen({ navigation }: Props) {
                           </Text>
                         </View>
                         <View style={[s.trackTypeBadge, { flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
-                          <AppIcon name="flash-outline" size={12} color={colors.primary} />
-                          <Text style={s.trackTypeBadgeText}>Same-Day</Text>
+                          <AppIcon name="calendar-outline" size={12} color={colors.primary} />
+                          <Text style={s.trackTypeBadgeText}>
+                            {item.allocatedStartTime
+                              ? getScheduledDateLabel(new Date(item.allocatedStartTime))
+                              : 'Scheduled'}
+                          </Text>
                         </View>
                       </View>
                     ) : (
@@ -482,10 +575,70 @@ export default function HomeScreen({ navigation }: Props) {
         {/* ── FAB to Add Task ────────────────────────────────────── */}
         <TouchableOpacity
           style={s.fab}
-          onPress={() => navigation.navigate('CreateEdit', {})}
+          onPress={() => setShowFabActionModal(true)}
         >
           <Text style={s.fabText}>+</Text>
         </TouchableOpacity>
+
+        {/* ── FAB Action Selection Modal ─────────────────────────── */}
+        <Modal
+          visible={showFabActionModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowFabActionModal(false)}
+        >
+          <TouchableOpacity
+            style={s.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowFabActionModal(false)}
+          >
+            <View style={s.fabModalCard} onStartShouldSetResponder={() => true}>
+              <Text style={s.fabModalTitle}>Create New Task</Text>
+              <Text style={s.fabModalSubtitle}>Choose how you want to track your task</Text>
+
+              <TouchableOpacity
+                style={s.fabOptionCard}
+                onPress={() => {
+                  setShowFabActionModal(false);
+                  navigation.navigate('CreateEdit', {});
+                }}
+              >
+                <View style={[s.fabOptionIconBox, { backgroundColor: colors.primary + '18' }]}>
+                  <AppIcon name="calendar-outline" size={24} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.fabOptionTitle}>Plan a Task</Text>
+                  <Text style={s.fabOptionDesc}>Schedule allocated time or plan for later</Text>
+                </View>
+                <AppIcon name="chevron-forward" size={18} color={colors.textSecondary} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={s.fabOptionCard}
+                onPress={() => {
+                  setShowFabActionModal(false);
+                  navigation.navigate('Blast');
+                }}
+              >
+                <View style={[s.fabOptionIconBox, { backgroundColor: '#F59E0B18' }]}>
+                  <AppIcon name="flash-outline" size={24} color="#F59E0B" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.fabOptionTitle}>Blast (Quick Track)</Text>
+                  <Text style={s.fabOptionDesc}>Immediate stopwatch or countdown timer session</Text>
+                </View>
+                <AppIcon name="chevron-forward" size={18} color={colors.textSecondary} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={s.modalCancelBtn}
+                onPress={() => setShowFabActionModal(false)}
+              >
+                <Text style={s.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
       </View>
     </SafeAreaView>
   );
@@ -816,6 +969,130 @@ function makeStyles(colors: any) {
       color: '#fff',
       fontWeight: 'bold',
       marginTop: -2,
+    },
+    listMetaRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingVertical: 6,
+    },
+    listMetaCount: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    reorderToggleBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    reorderToggleBtnActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primary + '18',
+    },
+    reorderToggleText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    reorderToggleTextActive: {
+      color: colors.primary,
+      fontWeight: '700',
+    },
+    reorderControlsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: 10,
+      paddingTop: 8,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    reorderPosText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.primary,
+    },
+    reorderBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      backgroundColor: colors.primary + '12',
+    },
+    reorderBtnDisabled: {
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    reorderBtnText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.primary,
+    },
+    fabModalCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 20,
+      padding: 20,
+      marginHorizontal: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.2,
+      shadowRadius: 16,
+      elevation: 6,
+    },
+    fabModalTitle: {
+      fontSize: 18,
+      fontWeight: '800',
+      color: colors.text,
+      textAlign: 'center',
+    },
+    fabModalSubtitle: {
+      fontSize: 13,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      marginTop: 4,
+      marginBottom: 16,
+    },
+    fabOptionCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+      padding: 14,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+      marginBottom: 10,
+    },
+    fabOptionIconBox: {
+      width: 44,
+      height: 44,
+      borderRadius: 12,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    fabOptionTitle: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.text,
+    },
+    fabOptionDesc: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      marginTop: 2,
     },
   });
 }

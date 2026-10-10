@@ -2,19 +2,31 @@ package model
 
 import "time"
 
+// ─── Goal Status Enum ─────────────────────────────────────────────────────────
+
+type GoalStatus string
+
+const (
+	GoalStatusPending          GoalStatus = "pending"
+	GoalStatusCompleted        GoalStatus = "completed"
+	GoalStatusOverdue          GoalStatus = "overdue"
+	GoalStatusCompletedOverdue GoalStatus = "completed_overdue"
+)
+
 // ─── Daily Goals ─────────────────────────────────────────────────────────────
 
 // DailyGoal represents a single goal entry for a specific date (created at night for the next day).
 // Max 10 goals per date.
 type DailyGoal struct {
-	ID          int       `json:"id" db:"id"`
-	UserID      int       `json:"user_id,omitempty" db:"user_id"`
-	Date        string    `json:"date" db:"date"`             // YYYY-MM-DD target date
-	Text        string    `json:"text" db:"text"`
-	IsCompleted bool      `json:"is_completed" db:"is_completed"`
-	Position    int       `json:"position" db:"position"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
+	ID          int        `json:"id" db:"id"`
+	UserID      int        `json:"user_id,omitempty" db:"user_id"`
+	Date        string     `json:"date" db:"date"`             // YYYY-MM-DD target date
+	Text        string     `json:"text" db:"text"`
+	Status      GoalStatus `json:"status" db:"status"`         // pending, completed, overdue, completed_overdue
+	IsCompleted bool       `json:"is_completed" db:"is_completed"`
+	Position    int        `json:"position" db:"position"`
+	CreatedAt   time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at" db:"updated_at"`
 }
 
 const MaxDailyGoals = 10
@@ -65,12 +77,13 @@ type WeeklyGoal struct {
 	WeekLabel   string    `json:"week_label" db:"week_label"` // e.g., "2026-W36"
 	CategoryID  int       `json:"category_id" db:"category_id"`
 	ParentID    *int      `json:"parent_id,omitempty" db:"parent_id"`
-	Tier        int       `json:"tier" db:"tier"`             // 1, 2, or 3
-	Text        string    `json:"text" db:"text"`
-	IsCompleted bool      `json:"is_completed" db:"is_completed"`
-	Position    int       `json:"position" db:"position"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
+	Tier        int        `json:"tier" db:"tier"`             // 1, 2, or 3
+	Text        string     `json:"text" db:"text"`
+	Status      GoalStatus `json:"status" db:"status"`         // pending, completed, overdue, completed_overdue
+	IsCompleted bool       `json:"is_completed" db:"is_completed"`
+	Position    int        `json:"position" db:"position"`
+	CreatedAt   time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at" db:"updated_at"`
 }
 
 const (

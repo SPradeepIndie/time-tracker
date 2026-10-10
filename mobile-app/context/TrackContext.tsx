@@ -24,6 +24,7 @@ interface TrackContextType {
   refreshTracks: () => Promise<void>;
   addTag: (trackId: string, tag: string) => Promise<void>;
   removeTag: (trackId: string, tag: string) => Promise<void>;
+  reorderTracks: (items: { id: string; position: number }[]) => Promise<void>;
   /** Wipe all local data. Pass deleteKey=true for a full factory reset. */
   clearAllData: (deleteKey?: boolean) => Promise<void>;
 }
@@ -148,6 +149,17 @@ export const TrackProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     });
   };
 
+  const reorderTracks = async (items: { id: string; position: number }[]): Promise<void> => {
+    // Optimistic local state update
+    const posMap = new Map(items.map((i) => [i.id, i.position]));
+    setTracks((prev) =>
+      [...prev]
+        .map((t) => (posMap.has(t.id) ? { ...t, position: posMap.get(t.id)! } : t))
+        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+    );
+    await localStorageAdapter.updatePositions(items);
+  };
+
   const clearAllData = async (deleteKey = false): Promise<void> => {
     setError(null);
     await localStorageAdapter.clearAllData(deleteKey);
@@ -184,6 +196,7 @@ export const TrackProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         refreshTracks,
         addTag,
         removeTag,
+        reorderTracks,
         clearAllData,
       }}
     >

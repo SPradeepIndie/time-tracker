@@ -55,6 +55,7 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
       allocated_end_time   TEXT,
       block_multiplier     INTEGER,
       duration_minutes     INTEGER,
+      position             INTEGER NOT NULL DEFAULT 0,
       start_time           TEXT NOT NULL,
       end_time             TEXT,
       created_at           TEXT NOT NULL,
@@ -70,6 +71,7 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
     { name: 'allocated_end_time', definition: 'TEXT' },
     { name: 'block_multiplier', definition: 'INTEGER' },
     { name: 'duration_minutes', definition: 'INTEGER' },
+    { name: 'position', definition: 'INTEGER NOT NULL DEFAULT 0' },
   ];
 
   for (const col of requiredColumns) {
@@ -172,6 +174,7 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
       remote_id    INTEGER,
       date         TEXT NOT NULL,
       text         TEXT NOT NULL,
+      status       TEXT NOT NULL DEFAULT 'pending',
       is_completed INTEGER NOT NULL DEFAULT 0,
       position     INTEGER NOT NULL DEFAULT 0,
       created_at   TEXT NOT NULL,
@@ -203,6 +206,7 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
       parent_id    TEXT REFERENCES weekly_goals(id) ON DELETE CASCADE,
       tier         INTEGER NOT NULL DEFAULT 1 CHECK(tier IN (1,2,3)),
       text         TEXT NOT NULL,
+      status       TEXT NOT NULL DEFAULT 'pending',
       is_completed INTEGER NOT NULL DEFAULT 0,
       position     INTEGER NOT NULL DEFAULT 0,
       created_at   TEXT NOT NULL,
@@ -316,6 +320,17 @@ async function runMigrations(
       // v5: tracks status CHECK constraint update
       version: 5,
       sql: `INSERT OR IGNORE INTO schema_version(version) VALUES (5);`,
+    },
+    {
+      // v6: add status column to daily_goals and weekly_goals
+      version: 6,
+      sql: `
+        ALTER TABLE daily_goals ADD COLUMN status TEXT NOT NULL DEFAULT 'pending';
+        ALTER TABLE weekly_goals ADD COLUMN status TEXT NOT NULL DEFAULT 'pending';
+        UPDATE daily_goals SET status = CASE WHEN is_completed = 1 THEN 'completed' ELSE 'pending' END WHERE status = 'pending';
+        UPDATE weekly_goals SET status = CASE WHEN is_completed = 1 THEN 'completed' ELSE 'pending' END WHERE status = 'pending';
+        INSERT OR IGNORE INTO schema_version(version) VALUES (6);
+      `,
     },
   ];
 

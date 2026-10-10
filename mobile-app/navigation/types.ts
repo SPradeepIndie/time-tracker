@@ -8,6 +8,7 @@ export type RootStackParamList = {
   MainTabs: undefined;
   TrackDetails: { id: string };
   CreateEdit: { id?: string };
+  Blast: undefined;
   Info: undefined;
 };
 
@@ -61,3 +62,8 @@ export type CreateEditScreenNavigationProp = NativeStackNavigationProp<
 >;
 
 export type CreateEditScreenRouteProp = RouteProp<RootStackParamList, 'CreateEdit'>;
+
+export type BlastScreenNavigationProp = NativeStackNavigationProp<
+  RootStackParamList,
+  'Blast'
+>;

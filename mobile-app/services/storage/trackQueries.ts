@@ -24,6 +24,7 @@ interface TrackRow {
   allocated_end_time: string | null;
   block_multiplier: number | null;
   duration_minutes: number | null;
+  position: number | null;
   start_time: string;
   end_time: string | null;
   created_at: string;
@@ -50,6 +51,7 @@ async function rowToTrack(row: TrackRow, tags: string[], key: string): Promise<T
     allocatedEndTime: row.allocated_end_time ? new Date(row.allocated_end_time) : undefined,
     blockMultiplier: row.block_multiplier ?? undefined,
     durationMinutes: row.duration_minutes ?? undefined,
+    position: row.position ?? 0,
     startTime: new Date(row.start_time),
     endTime: row.end_time ? new Date(row.end_time) : undefined,
     createdAt: new Date(row.created_at),
@@ -70,7 +72,7 @@ async function getTagsForTrack(db: SQLiteDatabase, trackId: string): Promise<str
 
 export async function queryGetAll(db: SQLiteDatabase, key: string): Promise<Track[]> {
   const rows = await db.getAllAsync<TrackRow>(
-    'SELECT * FROM tracks ORDER BY updated_at DESC;'
+    'SELECT * FROM tracks ORDER BY position ASC, updated_at DESC;'
   );
   return Promise.all(
     rows.map(async (row) => {
@@ -103,13 +105,14 @@ export async function queryCreate(
   const encTitle = await encrypt(track.title, key);
   const encDesc = await encrypt(track.description, key);
 
+  const pos = track.position ?? 0;
   await db.runAsync(
     `INSERT INTO tracks (
         id, remote_id, title, description, status, priority,
         task_type, time_input_mode, allocated_start_time, allocated_end_time,
-        block_multiplier, duration_minutes,
+        block_multiplier, duration_minutes, position,
         start_time, end_time, created_at, updated_at
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);`,
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);`,
     [
       track.id,
       track.remoteId ?? null,
@@ -123,6 +126,7 @@ export async function queryCreate(
       track.allocatedEndTime?.toISOString() ?? null,
       track.blockMultiplier ?? null,
       track.durationMinutes ?? null,
+      pos,
       track.startTime.toISOString(),
       track.endTime?.toISOString() ?? null,
       now,
@@ -196,6 +200,15 @@ export async function queryUpdate(
 
 export async function queryDelete(db: SQLiteDatabase, id: string): Promise<void> {
   await db.runAsync('DELETE FROM tracks WHERE id = ?;', [id]);
+}
+
+export async function queryUpdateTrackPositions(
+  db: SQLiteDatabase,
+  items: { id: string; position: number }[]
+): Promise<void> {
+  for (const item of items) {
+    await db.runAsync('UPDATE tracks SET position = ? WHERE id = ?;', [item.position, item.id]);
+  }
 }
 
 export async function queryAddTag(
