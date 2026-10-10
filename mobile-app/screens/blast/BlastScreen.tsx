@@ -58,6 +58,14 @@ export default function BlastScreen() {
   const { colors } = useTheme();
   const { addTrack } = useTrackContext();
 
+  const safeGoBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('MainTabs');
+    }
+  };
+
   // Mode & Timer State
   const [mode, setMode] = useState<BlastMode>('stopwatch');
   const [sessionState, setSessionState] = useState<SessionState>('idle');
@@ -224,7 +232,7 @@ export default function BlastScreen() {
       if (Platform.OS === 'android') {
         ToastAndroid.show(msg, ToastAndroid.SHORT);
       }
-      navigation.goBack();
+      safeGoBack();
     } catch {
       setAlertConfig({
         visible: true,
@@ -252,7 +260,7 @@ export default function BlastScreen() {
           style: 'destructive',
           onPress: () => {
             setShowCompletionModal(false);
-            navigation.goBack();
+            safeGoBack();
           },
         },
       ],
@@ -274,7 +282,7 @@ export default function BlastScreen() {
       <View style={s.container}>
         {/* ── Top Header ─────────────────────────────────────────── */}
         <View style={s.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
+          <TouchableOpacity onPress={() => safeGoBack()} style={s.backBtn}>
             <AppIcon name="chevron-back" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={s.headerTitle}>Blast Quick Track</Text>

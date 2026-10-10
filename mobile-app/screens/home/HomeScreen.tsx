@@ -19,6 +19,7 @@ import {
   ScrollView,
   ToastAndroid,
   Platform,
+  BackHandler,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useTrackContext } from '../../context/TrackContext';
@@ -105,6 +106,36 @@ export default function HomeScreen({ navigation }: Props) {
 
   // Status transition modal state
   const [selectedTaskForStatus, setSelectedTaskForStatus] = useState<Track | null>(null);
+
+  // Hardware Back Handler: handles overlay dismissal and prevents unhandled GO_BACK warnings
+  useEffect(() => {
+    const onBackPress = () => {
+      if (alertConfig) {
+        setAlertConfig(null);
+        return true;
+      }
+      if (fabExpanded) {
+        setFabExpanded(false);
+        return true;
+      }
+      if (selectedTaskForStatus) {
+        setSelectedTaskForStatus(null);
+        return true;
+      }
+      if (isReorderMode) {
+        setIsReorderMode(false);
+        return true;
+      }
+      if (!navigation.canGoBack()) {
+        BackHandler.exitApp();
+        return true;
+      }
+      return false;
+    };
+
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [alertConfig, fabExpanded, selectedTaskForStatus, isReorderMode, navigation]);
 
   // Auto-transition engine: check clock every 30 seconds for scheduled tasks
   useEffect(() => {

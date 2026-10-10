@@ -294,6 +294,14 @@ export default function CreateEditScreen({ navigation, route }: Props) {
           tags: selectedTags,
           endTime: initialStatus === 'completed' ? new Date() : undefined,
         });
+        const safeGoBack = () => {
+          if (navigation.canGoBack()) {
+            navigation.goBack();
+          } else {
+            navigation.navigate('MainTabs');
+          }
+        };
+
         setAlertConfig({
           visible: true,
           title: 'Task Updated',
@@ -305,14 +313,11 @@ export default function CreateEditScreen({ navigation, route }: Props) {
               text: 'OK',
               onPress: () => {
                 setAlertConfig(null);
-                navigation.goBack();
+                safeGoBack();
               },
             },
           ],
-          onDismiss: () => {
-            setAlertConfig(null);
-            navigation.goBack();
-          },
+          onDismiss: () => setAlertConfig(null),
         });
       } else {
         await addTrack({
@@ -331,6 +336,14 @@ export default function CreateEditScreen({ navigation, route }: Props) {
           endTime: initialStatus === 'completed' ? new Date() : undefined,
         });
         const dateDesc = scheduledDateMode === 'today' ? 'today' : scheduledDateMode === 'tomorrow' ? 'tomorrow' : customScheduledDate;
+        const safeGoBack = () => {
+          if (navigation.canGoBack()) {
+            navigation.goBack();
+          } else {
+            navigation.navigate('MainTabs');
+          }
+        };
+
         setAlertConfig({
           visible: true,
           title: 'Task Scheduled',
@@ -342,14 +355,11 @@ export default function CreateEditScreen({ navigation, route }: Props) {
               text: 'OK',
               onPress: () => {
                 setAlertConfig(null);
-                navigation.goBack();
+                safeGoBack();
               },
             },
           ],
-          onDismiss: () => {
-            setAlertConfig(null);
-            navigation.goBack();
-          },
+          onDismiss: () => setAlertConfig(null),
         });
       }
     } catch (err: any) {

@@ -86,8 +86,11 @@ export const ThemedAlert: React.FC<ThemedAlertProps> = ({
                         !isCancel && !isDestructive && s.buttonPrimary,
                       ]}
                       onPress={() => {
-                        handleClose();
-                        if (btn.onPress) btn.onPress();
+                        if (btn.onPress) {
+                          btn.onPress();
+                        } else {
+                          handleClose();
+                        }
                       }}
                     >
                       <Text
