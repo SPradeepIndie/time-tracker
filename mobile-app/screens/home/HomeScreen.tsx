@@ -29,6 +29,7 @@ import { Header } from '../../components/layout/Header';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { AppIcon } from '../../components/ui/AppIcon';
+import { ThemedAlert, ThemedAlertProps } from '../../components/ui';
 import * as SecureStore from 'expo-secure-store';
 import { Track, TaskStatus } from '../../types/Track';
 
@@ -82,7 +83,8 @@ export default function HomeScreen({ navigation }: Props) {
   const [activeFilter, setActiveFilter] = useState<FilterType>('unallocated');
   const [refreshing, setRefreshing] = useState(false);
   const [isReorderMode, setIsReorderMode] = useState(false);
-  const [showFabActionModal, setShowFabActionModal] = useState(false);
+  const [fabExpanded, setFabExpanded] = useState(false);
+  const [alertConfig, setAlertConfig] = useState<ThemedAlertProps | null>(null);
 
   // Sorting state (configured via Settings)
   const [taskSortBy, setTaskSortBy] = useState<'priority' | 'status'>('priority');
@@ -131,18 +133,22 @@ export default function HomeScreen({ navigation }: Props) {
   };
 
   const handleDelete = (id: string, title: string) => {
-    Alert.alert(
-      'Delete Task',
-      `Are you sure you want to delete "${title}"?`,
-      [
+    setAlertConfig({
+      visible: true,
+      title: 'Delete Task',
+      message: `Are you sure you want to delete "${title}"?`,
+      icon: 'trash',
+      iconColor: colors.error || '#EF4444',
+      buttons: [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: () => deleteTrack(id),
         },
-      ]
-    );
+      ],
+      onClose: () => setAlertConfig(null),
+    });
   };
 
   const handleCopyTask = (title: string) => {
@@ -236,7 +242,15 @@ export default function HomeScreen({ navigation }: Props) {
         endTime: newStatus === 'completed' ? new Date() : undefined,
       });
     } catch {
-      Alert.alert('Error', 'Failed to update task status.');
+      setAlertConfig({
+        visible: true,
+        title: 'Status Update Failed',
+        message: 'Unable to update task status. Please try again.',
+        icon: 'alert-circle',
+        iconColor: colors.error || '#EF4444',
+        buttons: [{ text: 'OK', style: 'default' }],
+        onClose: () => setAlertConfig(null),
+      });
     }
   };
 
@@ -572,73 +586,74 @@ export default function HomeScreen({ navigation }: Props) {
           </TouchableOpacity>
         </Modal>
 
-        {/* ── FAB to Add Task ────────────────────────────────────── */}
-        <TouchableOpacity
-          style={s.fab}
-          onPress={() => setShowFabActionModal(true)}
-        >
-          <Text style={s.fabText}>+</Text>
-        </TouchableOpacity>
-
-        {/* ── FAB Action Selection Modal ─────────────────────────── */}
-        <Modal
-          visible={showFabActionModal}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowFabActionModal(false)}
-        >
+        {/* ── Speed Dial Backdrop ─────────────────────────────────── */}
+        {fabExpanded && (
           <TouchableOpacity
-            style={s.modalOverlay}
+            style={s.speedDialBackdrop}
             activeOpacity={1}
-            onPress={() => setShowFabActionModal(false)}
-          >
-            <View style={s.fabModalCard} onStartShouldSetResponder={() => true}>
-              <Text style={s.fabModalTitle}>Create New Task</Text>
-              <Text style={s.fabModalSubtitle}>Choose how you want to track your task</Text>
+            onPress={() => setFabExpanded(false)}
+          />
+        )}
 
-              <TouchableOpacity
-                style={s.fabOptionCard}
-                onPress={() => {
-                  setShowFabActionModal(false);
-                  navigation.navigate('CreateEdit', {});
-                }}
-              >
-                <View style={[s.fabOptionIconBox, { backgroundColor: colors.primary + '18' }]}>
-                  <AppIcon name="calendar-outline" size={24} color={colors.primary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.fabOptionTitle}>Plan a Task</Text>
-                  <Text style={s.fabOptionDesc}>Schedule allocated time or plan for later</Text>
-                </View>
-                <AppIcon name="chevron-forward" size={18} color={colors.textSecondary} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={s.fabOptionCard}
-                onPress={() => {
-                  setShowFabActionModal(false);
-                  navigation.navigate('Blast');
-                }}
-              >
-                <View style={[s.fabOptionIconBox, { backgroundColor: '#F59E0B18' }]}>
-                  <AppIcon name="flash-outline" size={24} color="#F59E0B" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.fabOptionTitle}>Blast (Quick Track)</Text>
-                  <Text style={s.fabOptionDesc}>Immediate stopwatch or countdown timer session</Text>
-                </View>
-                <AppIcon name="chevron-forward" size={18} color={colors.textSecondary} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={s.modalCancelBtn}
-                onPress={() => setShowFabActionModal(false)}
-              >
-                <Text style={s.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
+        {/* ── Speed Dial Item (Up: Plan Task) ────────────────────── */}
+        {fabExpanded && (
+          <View style={s.speedDialUpContainer}>
+            <View style={s.speedDialLabelPill}>
+              <Text style={s.speedDialLabelText}>Plan Task</Text>
             </View>
-          </TouchableOpacity>
-        </Modal>
+            <TouchableOpacity
+              style={[s.speedDialMiniBtn, { backgroundColor: colors.primary }]}
+              onPress={() => {
+                setFabExpanded(false);
+                navigation.navigate('CreateEdit', {});
+              }}
+            >
+              <AppIcon name="calendar-outline" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ── Speed Dial Item (Left: Blast) ──────────────────────── */}
+        {fabExpanded && (
+          <View style={s.speedDialLeftContainer}>
+            <View style={s.speedDialLabelPill}>
+              <Text style={s.speedDialLabelText}>Blast</Text>
+            </View>
+            <TouchableOpacity
+              style={[s.speedDialMiniBtn, { backgroundColor: '#F59E0B' }]}
+              onPress={() => {
+                setFabExpanded(false);
+                navigation.navigate('Blast');
+              }}
+            >
+              <AppIcon name="flash-outline" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ── Main FAB ────────────────────────────────────────────── */}
+        <TouchableOpacity
+          style={[s.fab, fabExpanded && s.fabActive]}
+          onPress={() => setFabExpanded((prev) => !prev)}
+        >
+          <AppIcon
+            name={fabExpanded ? 'close' : 'add'}
+            size={fabExpanded ? 24 : 30}
+            color="#FFFFFF"
+          />
+        </TouchableOpacity>
+        {/* ── Custom Themed Alert Dialog ─────────────────────────── */}
+        {alertConfig && (
+          <ThemedAlert
+            visible={alertConfig.visible}
+            title={alertConfig.title}
+            message={alertConfig.message}
+            icon={alertConfig.icon}
+            iconColor={alertConfig.iconColor}
+            buttons={alertConfig.buttons}
+            onClose={() => setAlertConfig(null)}
+          />
+        )}
       </View>
     </SafeAreaView>
   );
@@ -958,17 +973,68 @@ function makeStyles(colors: any) {
       backgroundColor: colors.primary,
       justifyContent: 'center',
       alignItems: 'center',
-      elevation: 5,
-      shadowColor: colors.shadow,
+      elevation: 8,
+      shadowColor: '#000',
       shadowOffset: { width: 0, height: 3 },
       shadowOpacity: 0.3,
       shadowRadius: 5,
+      zIndex: 12,
     },
-    fabText: {
-      fontSize: 32,
-      color: '#fff',
-      fontWeight: 'bold',
-      marginTop: -2,
+    fabActive: {
+      backgroundColor: colors.textSecondary,
+    },
+    speedDialBackdrop: {
+      ...StyleSheet.absoluteFill,
+      backgroundColor: 'rgba(0,0,0,0.35)',
+      zIndex: 10,
+    },
+    speedDialUpContainer: {
+      position: 'absolute',
+      right: 24,
+      bottom: 92,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      zIndex: 11,
+    },
+    speedDialLeftContainer: {
+      position: 'absolute',
+      right: 88,
+      bottom: 28,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      zIndex: 11,
+    },
+    speedDialMiniBtn: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      justifyContent: 'center',
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.25,
+      shadowRadius: 5,
+      elevation: 6,
+    },
+    speedDialLabelPill: {
+      backgroundColor: colors.surface,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.15,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    speedDialLabelText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.text,
     },
     listMetaRow: {
       flexDirection: 'row',
@@ -1039,60 +1105,6 @@ function makeStyles(colors: any) {
       fontSize: 12,
       fontWeight: '600',
       color: colors.primary,
-    },
-    fabModalCard: {
-      backgroundColor: colors.surface,
-      borderRadius: 20,
-      padding: 20,
-      marginHorizontal: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.2,
-      shadowRadius: 16,
-      elevation: 6,
-    },
-    fabModalTitle: {
-      fontSize: 18,
-      fontWeight: '800',
-      color: colors.text,
-      textAlign: 'center',
-    },
-    fabModalSubtitle: {
-      fontSize: 13,
-      color: colors.textSecondary,
-      textAlign: 'center',
-      marginTop: 4,
-      marginBottom: 16,
-    },
-    fabOptionCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 14,
-      padding: 14,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.background,
-      marginBottom: 10,
-    },
-    fabOptionIconBox: {
-      width: 44,
-      height: 44,
-      borderRadius: 12,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    fabOptionTitle: {
-      fontSize: 15,
-      fontWeight: '700',
-      color: colors.text,
-    },
-    fabOptionDesc: {
-      fontSize: 12,
-      color: colors.textSecondary,
-      marginTop: 2,
     },
   });
 }

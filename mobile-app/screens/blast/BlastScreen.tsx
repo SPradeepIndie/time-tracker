@@ -26,6 +26,7 @@ import { useNavigation } from '@react-navigation/native';
 import { BlastScreenNavigationProp } from '../../navigation/types';
 import { SafeAreaView } from '../../components/layout/SafeAreaView';
 import { AppIcon } from '../../components/ui/AppIcon';
+import { ThemedAlert, ThemedAlertProps } from '../../components/ui';
 import { useTheme } from '../../context/ThemeContext';
 import { useTrackContext } from '../../context/TrackContext';
 import { PREDEFINED_TAGS, TaskStatus } from '../../types/Track';
@@ -77,41 +78,45 @@ export default function BlastScreen() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [customTagInput, setCustomTagInput] = useState('');
 
+  // Alert Modal State
+  const [alertConfig, setAlertConfig] = useState<ThemedAlertProps | null>(null);
+
   // Interval reference
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Stopwatch interval
+  // Unified timer/stopwatch interval
   useEffect(() => {
-    if (mode === 'stopwatch' && sessionState === 'running') {
+    if (sessionState !== 'running') {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      return;
+    }
+
+    if (mode === 'stopwatch') {
       intervalRef.current = setInterval(() => {
         setStopwatchSeconds((prev) => prev + 1);
       }, 1000);
-    } else if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-    }
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [mode, sessionState]);
-
-  // Countdown timer interval
-  useEffect(() => {
-    if (mode === 'timer' && sessionState === 'running') {
+    } else if (mode === 'timer') {
       intervalRef.current = setInterval(() => {
         setTimerRemainingSeconds((prev) => {
           if (prev <= 1) {
             clearInterval(intervalRef.current!);
+            intervalRef.current = null;
             handleFinishSession();
             return 0;
           }
           return prev - 1;
         });
       }, 1000);
-    } else if (intervalRef.current) {
-      clearInterval(intervalRef.current);
     }
+
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
     };
   }, [mode, sessionState]);
 
@@ -180,7 +185,15 @@ export default function BlastScreen() {
   const handleSaveTask = async () => {
     const trimmedTitle = taskTitle.trim();
     if (!trimmedTitle) {
-      Alert.alert('Required Field', 'Please enter a title for your blast task.');
+      setAlertConfig({
+        visible: true,
+        title: 'Title Required',
+        message: 'Please enter a title for your blast task.',
+        icon: 'alert-circle',
+        iconColor: '#F59E0B',
+        buttons: [{ text: 'OK', style: 'default' }],
+        onClose: () => setAlertConfig(null),
+      });
       return;
     }
 
@@ -210,20 +223,29 @@ export default function BlastScreen() {
       const msg = `Blast session recorded: ${trimmedTitle}`;
       if (Platform.OS === 'android') {
         ToastAndroid.show(msg, ToastAndroid.SHORT);
-      } else {
-        Alert.alert('Session Saved', msg);
       }
       navigation.goBack();
     } catch {
-      Alert.alert('Save Failed', 'Unable to record blast task. Please try again.');
+      setAlertConfig({
+        visible: true,
+        title: 'Save Failed',
+        message: 'Unable to record blast task. Please try again.',
+        icon: 'alert-circle',
+        iconColor: colors.error || '#EF4444',
+        buttons: [{ text: 'OK', style: 'default' }],
+        onClose: () => setAlertConfig(null),
+      });
     }
   };
 
   const handleDiscard = () => {
-    Alert.alert(
-      'Discard Session',
-      'Are you sure you want to discard this recorded time?',
-      [
+    setAlertConfig({
+      visible: true,
+      title: 'Discard Session',
+      message: 'Are you sure you want to discard this recorded time?',
+      icon: 'trash',
+      iconColor: colors.error || '#EF4444',
+      buttons: [
         { text: 'Keep Tracking', style: 'cancel' },
         {
           text: 'Discard',
@@ -233,8 +255,9 @@ export default function BlastScreen() {
             navigation.goBack();
           },
         },
-      ]
-    );
+      ],
+      onClose: () => setAlertConfig(null),
+    });
   };
 
   const currentSeconds = mode === 'stopwatch' ? stopwatchSeconds : timerRemainingSeconds;
@@ -247,7 +270,7 @@ export default function BlastScreen() {
   const s = makeStyles(colors);
 
   return (
-    <SafeAreaView edges={['top']}>
+    <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1 }}>
       <View style={s.container}>
         {/* ── Top Header ─────────────────────────────────────────── */}
         <View style={s.header}>
@@ -523,6 +546,19 @@ export default function BlastScreen() {
             </View>
           </View>
         </Modal>
+
+        {/* ── Custom Themed Alert Dialog ─────────────────────────── */}
+        {alertConfig && (
+          <ThemedAlert
+            visible={alertConfig.visible}
+            title={alertConfig.title}
+            message={alertConfig.message}
+            icon={alertConfig.icon}
+            iconColor={alertConfig.iconColor}
+            buttons={alertConfig.buttons}
+            onClose={() => setAlertConfig(null)}
+          />
+        )}
       </View>
     </SafeAreaView>
   );
@@ -660,7 +696,7 @@ function makeStyles(colors: any) {
     },
     controlsContainer: {
       paddingHorizontal: 24,
-      paddingBottom: 40,
+      paddingBottom: 20,
     },
     primaryActionBtn: {
       flexDirection: 'row',

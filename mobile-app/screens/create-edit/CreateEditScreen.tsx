@@ -18,7 +18,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -34,6 +33,7 @@ import {
 } from '../../types/Track';
 import { SafeAreaView } from '../../components/layout/SafeAreaView';
 import { AppIcon } from '../../components/ui/AppIcon';
+import { ThemedAlert, ThemedAlertProps } from '../../components/ui';
 
 interface Props {
   navigation: CreateEditScreenNavigationProp;
@@ -99,6 +99,7 @@ export default function CreateEditScreen({ navigation, route }: Props) {
     return dateToTimeString(end);
   });
   const [blockMultiplier, setBlockMultiplier] = useState(1);
+  const [alertConfig, setAlertConfig] = useState<ThemedAlertProps | null>(null);
 
   const isEdit = !!id;
 
@@ -232,17 +233,41 @@ export default function CreateEditScreen({ navigation, route }: Props) {
 
   const handleSave = async () => {
     if (!title.trim()) {
-      Alert.alert('Missing Title', 'Please enter a title for this task.');
+      setAlertConfig({
+        visible: true,
+        title: 'Missing Title',
+        message: 'Please enter a title for this task.',
+        icon: 'alert-circle-outline',
+        iconColor: colors.warning || '#f59e0b',
+        buttons: [{ text: 'OK', onPress: () => setAlertConfig(null) }],
+        onDismiss: () => setAlertConfig(null),
+      });
       return;
     }
 
     if (taskType === 'allocated') {
       if (schedulingResult.error) {
-        Alert.alert('Invalid Time Schedule', schedulingResult.error);
+        setAlertConfig({
+          visible: true,
+          title: 'Invalid Time Schedule',
+          message: schedulingResult.error,
+          icon: 'time-outline',
+          iconColor: colors.error || '#ef4444',
+          buttons: [{ text: 'OK', onPress: () => setAlertConfig(null) }],
+          onDismiss: () => setAlertConfig(null),
+        });
         return;
       }
       if (!schedulingResult.computedStart || !schedulingResult.computedEnd) {
-        Alert.alert('Missing Schedule', 'Please provide valid start and end times.');
+        setAlertConfig({
+          visible: true,
+          title: 'Missing Schedule',
+          message: 'Please provide valid start and end times.',
+          icon: 'time-outline',
+          iconColor: colors.warning || '#f59e0b',
+          buttons: [{ text: 'OK', onPress: () => setAlertConfig(null) }],
+          onDismiss: () => setAlertConfig(null),
+        });
         return;
       }
     }
@@ -269,9 +294,26 @@ export default function CreateEditScreen({ navigation, route }: Props) {
           tags: selectedTags,
           endTime: initialStatus === 'completed' ? new Date() : undefined,
         });
-        Alert.alert('Task Updated', 'Your changes have been saved successfully.', [
-          { text: 'OK', onPress: () => navigation.goBack() },
-        ]);
+        setAlertConfig({
+          visible: true,
+          title: 'Task Updated',
+          message: 'Your changes have been saved successfully.',
+          icon: 'checkmark-circle-outline',
+          iconColor: colors.success || '#10b981',
+          buttons: [
+            {
+              text: 'OK',
+              onPress: () => {
+                setAlertConfig(null);
+                navigation.goBack();
+              },
+            },
+          ],
+          onDismiss: () => {
+            setAlertConfig(null);
+            navigation.goBack();
+          },
+        });
       } else {
         await addTrack({
           title: title.trim(),
@@ -289,13 +331,38 @@ export default function CreateEditScreen({ navigation, route }: Props) {
           endTime: initialStatus === 'completed' ? new Date() : undefined,
         });
         const dateDesc = scheduledDateMode === 'today' ? 'today' : scheduledDateMode === 'tomorrow' ? 'tomorrow' : customScheduledDate;
-        Alert.alert('Task Scheduled', `Your task has been scheduled for ${dateDesc}.`, [
-          { text: 'OK', onPress: () => navigation.goBack() },
-        ]);
+        setAlertConfig({
+          visible: true,
+          title: 'Task Scheduled',
+          message: `Your task has been scheduled for ${dateDesc}.`,
+          icon: 'checkmark-circle-outline',
+          iconColor: colors.success || '#10b981',
+          buttons: [
+            {
+              text: 'OK',
+              onPress: () => {
+                setAlertConfig(null);
+                navigation.goBack();
+              },
+            },
+          ],
+          onDismiss: () => {
+            setAlertConfig(null);
+            navigation.goBack();
+          },
+        });
       }
     } catch (err: any) {
       console.error('[CreateEditScreen] Failed to save task:', err);
-      Alert.alert('Save Failed', 'Unable to save task. Please verify required fields and try again.');
+      setAlertConfig({
+        visible: true,
+        title: 'Save Failed',
+        message: 'Unable to save task. Please verify required fields and try again.',
+        icon: 'alert-circle-outline',
+        iconColor: colors.error || '#ef4444',
+        buttons: [{ text: 'OK', onPress: () => setAlertConfig(null) }],
+        onDismiss: () => setAlertConfig(null),
+      });
     }
   };
 
@@ -653,6 +720,8 @@ export default function CreateEditScreen({ navigation, route }: Props) {
         </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {alertConfig && <ThemedAlert {...alertConfig} />}
     </SafeAreaView>
   );
 }
