@@ -71,14 +71,27 @@ async function getTagsForTrack(db: SQLiteDatabase, trackId: string): Promise<str
 // ── Queries ───────────────────────────────────────────────────────────────────
 
 export async function queryGetAll(db: SQLiteDatabase, key: string): Promise<Track[]> {
-  const rows = await db.getAllAsync<TrackRow>(
-    'SELECT * FROM tracks ORDER BY position ASC, updated_at DESC;'
-  );
+  const [rows, tagRows] = await Promise.all([
+    db.getAllAsync<TrackRow>(
+      'SELECT * FROM tracks ORDER BY position ASC, updated_at DESC;'
+    ),
+    db.getAllAsync<{ track_id: string; name: string }>(
+      'SELECT track_id, name FROM tags ORDER BY id ASC;'
+    ),
+  ]);
+
+  const tagMap = new Map<string, string[]>();
+  for (const t of tagRows) {
+    let list = tagMap.get(t.track_id);
+    if (!list) {
+      list = [];
+      tagMap.set(t.track_id, list);
+    }
+    list.push(t.name);
+  }
+
   return Promise.all(
-    rows.map(async (row) => {
-      const tags = await getTagsForTrack(db, row.id);
-      return rowToTrack(row, tags, key);
-    })
+    rows.map((row) => rowToTrack(row, tagMap.get(row.id) ?? [], key))
   );
 }
 

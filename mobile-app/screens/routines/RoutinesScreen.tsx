@@ -3,7 +3,7 @@
  *
  * Manage routines with sub-activities and custom reminder matrix.
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, Modal, Switch, ActivityIndicator,
@@ -57,7 +57,7 @@ export default function RoutinesScreen({ navigation }: Props) {
   const [reminderHour, setReminderHour] = useState('09');
   const [reminderMinute, setReminderMinute] = useState('00');
 
-  const s = makeStyles(colors);
+  const s = useMemo(() => makeStyles(colors), [colors]);
 
   const loadRoutineData = useCallback(async (routineId: string) => {
     const [acts, rems] = await Promise.all([
@@ -71,6 +71,8 @@ export default function RoutinesScreen({ navigation }: Props) {
   }, [getSubActivities, getReminders, getDailyLogs, today]);
 
   // Instant Progress Fill: Prefetch sub-activities and today's logs for all routines on mount
+  const routineIdsKey = useMemo(() => routines.map((r) => r.id).sort().join(','), [routines]);
+
   useEffect(() => {
     let active = true;
     const prefetchAll = async () => {
@@ -104,7 +106,7 @@ export default function RoutinesScreen({ navigation }: Props) {
     return () => {
       active = false;
     };
-  }, [routines, getSubActivities, getReminders, getDailyLogs, today]);
+  }, [routineIdsKey, getSubActivities, getReminders, getDailyLogs, today]);
 
   const handleExpandRoutine = useCallback(async (routineId: string) => {
     if (expandedRoutineId === routineId) {

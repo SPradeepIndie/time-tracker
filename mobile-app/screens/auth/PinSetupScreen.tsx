@@ -5,7 +5,7 @@
  * User enters a 4-digit PIN twice to confirm, then it's stored as a SHA-256 hash
  * in expo-secure-store (hardware-backed; never stored as plaintext).
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -39,7 +39,7 @@ export default function PinSetupScreen({ navigation }: Props) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
 
-  const s = makeStyles(colors);
+  const s = useMemo(() => makeStyles(colors), [colors]);
 
   const handleKey = useCallback(async (key: string) => {
     if (key === '⌫') {

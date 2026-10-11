@@ -7,7 +7,7 @@
  *  - Security: Change PIN & reset options
  *  - About: App Information link (housing Dark Mode toggle)
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -264,7 +264,7 @@ export default function SettingsScreen({ navigation }: Props) {
     await SecureStore.setItemAsync('task_sort_order', sortOrder);
   };
 
-  const s = makeStyles(colors);
+  const s = useMemo(() => makeStyles(colors), [colors]);
 
   return (
     <SafeAreaView edges={['top']}>

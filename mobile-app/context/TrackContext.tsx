@@ -5,7 +5,7 @@
  * Now depends only on ITrackRepository (via LocalStorageAdapter).
  * Mirror writes to ApiServerAdapter happen here when sync is enabled.
  */
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import { Track } from '../types/Track';
 import { localStorageAdapter } from '../adapters/LocalStorageAdapter';
 import { apiServerAdapter } from '../adapters/ApiServerAdapter';
@@ -182,24 +182,27 @@ export const TrackProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     );
   };
 
+  const value = useMemo(
+    () => ({
+      tracks,
+      loading,
+      error,
+      addTrack,
+      updateTrack,
+      deleteTrack,
+      getTrackById,
+      searchTracks,
+      refreshTracks,
+      addTag,
+      removeTag,
+      reorderTracks,
+      clearAllData,
+    }),
+    [tracks, loading, error, addTrack, updateTrack, deleteTrack, addTag, removeTag, reorderTracks, clearAllData]
+  );
+
   return (
-    <TrackContext.Provider
-      value={{
-        tracks,
-        loading,
-        error,
-        addTrack,
-        updateTrack,
-        deleteTrack,
-        getTrackById,
-        searchTracks,
-        refreshTracks,
-        addTag,
-        removeTag,
-        reorderTracks,
-        clearAllData,
-      }}
-    >
+    <TrackContext.Provider value={value}>
       {children}
     </TrackContext.Provider>
   );

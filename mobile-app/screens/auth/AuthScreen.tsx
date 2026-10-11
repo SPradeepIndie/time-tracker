@@ -4,7 +4,7 @@
  * Shown on every app launch when a PIN is set.
  * Biometric is attempted automatically first; fallback is the 4-digit PIN pad.
  */
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -41,7 +41,7 @@ export default function AuthScreen({ navigation }: Props) {
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [failedAttempts, setFailedAttempts] = useState(0);
   const [lockoutRemaining, setLockoutRemaining] = useState(0);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Lockout countdown ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -153,7 +153,7 @@ export default function AuthScreen({ navigation }: Props) {
     }
   }, [pin, navigation, lockoutRemaining, failedAttempts]);
 
-  const s = makeStyles(colors);
+  const s = useMemo(() => makeStyles(colors), [colors]);
 
   return (
     <View style={s.container}>

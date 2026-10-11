@@ -4,7 +4,7 @@
  * React context providing goal state and operations to the UI.
  * Covers both Daily Goals (for tomorrow) and Weekly Goals (3-tier).
  */
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
 import { useTrackContext } from './TrackContext'; // For DB access pattern
 import { getDatabase } from '../services/storage/db';
 import {
@@ -238,17 +238,59 @@ export function GoalProvider({ children }: { children: React.ReactNode }) {
     setWeeklyGoals((prev) => prev.filter((g) => !toDelete.has(g.id)));
   }, [weeklyGoals]);
 
+  const value = useMemo(
+    () => ({
+      todayGoals,
+      tomorrowGoals,
+      loadDailyGoals,
+      addDailyGoal,
+      toggleDailyGoal,
+      updateDailyGoalText,
+      deleteDailyGoal,
+      categories,
+      addCategory,
+      updateCategory,
+      deleteCategory,
+      weeklyGoals,
+      currentWeekLabel,
+      nextWeekLabel,
+      selectedWeekLabel,
+      setSelectedWeekLabel,
+      loadWeeklyGoals,
+      addWeeklyGoal,
+      toggleWeeklyGoal,
+      updateWeeklyGoalText,
+      deleteWeeklyGoal,
+      isLoading,
+    }),
+    [
+      todayGoals,
+      tomorrowGoals,
+      loadDailyGoals,
+      addDailyGoal,
+      toggleDailyGoal,
+      updateDailyGoalText,
+      deleteDailyGoal,
+      categories,
+      addCategory,
+      updateCategory,
+      deleteCategory,
+      weeklyGoals,
+      currentWeekLabel,
+      nextWeekLabel,
+      selectedWeekLabel,
+      setSelectedWeekLabel,
+      loadWeeklyGoals,
+      addWeeklyGoal,
+      toggleWeeklyGoal,
+      updateWeeklyGoalText,
+      deleteWeeklyGoal,
+      isLoading,
+    ]
+  );
+
   return (
-    <GoalContext.Provider
-      value={{
-        todayGoals, tomorrowGoals, loadDailyGoals,
-        addDailyGoal, toggleDailyGoal, updateDailyGoalText, deleteDailyGoal,
-        categories, addCategory, updateCategory, deleteCategory,
-        weeklyGoals, currentWeekLabel, nextWeekLabel, selectedWeekLabel, setSelectedWeekLabel, loadWeeklyGoals,
-        addWeeklyGoal, toggleWeeklyGoal, updateWeeklyGoalText, deleteWeeklyGoal,
-        isLoading,
-      }}
-    >
+    <GoalContext.Provider value={value}>
       {children}
     </GoalContext.Provider>
   );

@@ -3,7 +3,7 @@
  *
  * React context providing routine state and operations to the UI.
  */
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
 import { getDatabase } from '../services/storage/db';
 import {
   queryGetAllRoutines,
@@ -185,17 +185,47 @@ export function RoutineProvider({ children }: { children: React.ReactNode }) {
     await queryToggleActivityLog(db, logId, isChecked);
   }, []);
 
+  const value = useMemo(
+    () => ({
+      routines,
+      loadRoutines,
+      addRoutine,
+      updateRoutine,
+      deleteRoutine,
+      getSubActivities,
+      addSubActivity,
+      updateSubActivity,
+      deleteSubActivity,
+      getReminders,
+      addReminder,
+      toggleReminderEnabled,
+      deleteReminder,
+      getDailyLogs,
+      toggleActivityLog,
+      isLoading,
+    }),
+    [
+      routines,
+      loadRoutines,
+      addRoutine,
+      updateRoutine,
+      deleteRoutine,
+      getSubActivities,
+      addSubActivity,
+      updateSubActivity,
+      deleteSubActivity,
+      getReminders,
+      addReminder,
+      toggleReminderEnabled,
+      deleteReminder,
+      getDailyLogs,
+      toggleActivityLog,
+      isLoading,
+    ]
+  );
+
   return (
-    <RoutineContext.Provider
-      value={{
-        routines, loadRoutines,
-        addRoutine, updateRoutine, deleteRoutine,
-        getSubActivities, addSubActivity, updateSubActivity, deleteSubActivity,
-        getReminders, addReminder, toggleReminderEnabled, deleteReminder,
-        getDailyLogs, toggleActivityLog,
-        isLoading,
-      }}
-    >
+    <RoutineContext.Provider value={value}>
       {children}
     </RoutineContext.Provider>
   );

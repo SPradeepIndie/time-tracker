@@ -183,6 +183,19 @@ func Migrate(db *sql.DB) (error, string) {
 			-- Add position column for drag-and-drop custom ordering of tasks
 			ALTER TABLE tracker ADD COLUMN IF NOT EXISTS position INTEGER NOT NULL DEFAULT 0;`,
 		},
+		{
+			name: "v7_performance_indexes",
+			sql: `
+			-- Performance indexes on frequently filtered and joined columns
+			CREATE INDEX IF NOT EXISTS idx_tracker_status_type ON tracker(status, task_type);
+			CREATE INDEX IF NOT EXISTS idx_tracker_created_at ON tracker(created_at);
+			CREATE INDEX IF NOT EXISTS idx_tags_track_id ON tags(track_id);
+			CREATE INDEX IF NOT EXISTS idx_daily_goals_date ON daily_goals(date);
+			CREATE INDEX IF NOT EXISTS idx_weekly_goals_week_cat ON weekly_goals(week_label, category_id);
+			CREATE INDEX IF NOT EXISTS idx_routine_subs_routine_id ON routine_sub_activities(routine_id);
+			CREATE INDEX IF NOT EXISTS idx_routine_reminders_routine_id ON routine_reminders(routine_id);
+			CREATE INDEX IF NOT EXISTS idx_routine_logs_routine_date ON routine_activity_logs(routine_id, date);`,
+		},
 	}
 
 	for _, m := range migrations {

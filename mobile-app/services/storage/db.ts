@@ -332,6 +332,21 @@ async function runMigrations(
         INSERT OR IGNORE INTO schema_version(version) VALUES (6);
       `,
     },
+    {
+      // v7: Performance indexes on frequently filtered and joined columns
+      version: 7,
+      sql: `
+        CREATE INDEX IF NOT EXISTS idx_tracks_status_type ON tracks(status, task_type);
+        CREATE INDEX IF NOT EXISTS idx_tracks_created_at ON tracks(created_at);
+        CREATE INDEX IF NOT EXISTS idx_tags_track_id ON tags(track_id);
+        CREATE INDEX IF NOT EXISTS idx_daily_goals_date ON daily_goals(date);
+        CREATE INDEX IF NOT EXISTS idx_weekly_goals_week_cat ON weekly_goals(week_label, category_id);
+        CREATE INDEX IF NOT EXISTS idx_routine_subs_routine_id ON routine_sub_activities(routine_id);
+        CREATE INDEX IF NOT EXISTS idx_routine_reminders_routine_id ON routine_reminders(routine_id);
+        CREATE INDEX IF NOT EXISTS idx_routine_logs_routine_date ON routine_activity_logs(routine_id, date);
+        INSERT OR IGNORE INTO schema_version(version) VALUES (7);
+      `,
+    },
   ];
 
   for (const migration of migrations) {

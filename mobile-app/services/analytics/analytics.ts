@@ -215,12 +215,11 @@ export async function calculateWeeklyAnalytics(
     })
   );
 
-  // Monday to Sunday calendar week history
+  // Monday to Sunday calendar week history (parallel fetch for max performance)
   const { days } = getCurrentWeekDateRange();
-  const dailyHistory: DailyAnalytics[] = [];
-  for (const dateStr of days) {
-    dailyHistory.push(await calculateDailyAnalytics(db, dateStr, customWeights));
-  }
+  const dailyHistory = await Promise.all(
+    days.map((dateStr) => calculateDailyAnalytics(db, dateStr, customWeights))
+  );
 
   return { weekLabel, categoryStats, dailyHistory };
 }
