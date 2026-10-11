@@ -21,7 +21,7 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
 
   _initPromise = (async () => {
     try {
-      const db = await SQLite.openDatabaseAsync('time_tracker.db');
+      const db = await SQLite.openDatabaseAsync('time_tracker.db', { useNewConnection: true });
       await initDatabase(db);
       _db = db;
       return db;
@@ -37,7 +37,7 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
   await db.execAsync('PRAGMA journal_mode = WAL;');
   await db.execAsync('PRAGMA foreign_keys = ON;');
 
-  // ── tracks table (v1 base) ─────────────────────────────────────────────────
+  // ── 1. tracks ───────────────────────────────────────────────────────────────
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS tracks (
       id                   TEXT PRIMARY KEY,
@@ -63,101 +63,7 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
     );
   `);
 
-  // Ensure all extended columns exist on existing databases (self-healing migration)
-  const requiredColumns: Array<{ name: string; definition: string }> = [
-    { name: 'task_type', definition: "TEXT NOT NULL DEFAULT 'unallocated'" },
-    { name: 'time_input_mode', definition: 'TEXT' },
-    { name: 'allocated_start_time', definition: 'TEXT' },
-    { name: 'allocated_end_time', definition: 'TEXT' },
-    { name: 'block_multiplier', definition: 'INTEGER' },
-    { name: 'duration_minutes', definition: 'INTEGER' },
-    { name: 'position', definition: 'INTEGER NOT NULL DEFAULT 0' },
-  ];
-
-  for (const col of requiredColumns) {
-    try {
-      await db.execAsync(`ALTER TABLE tracks ADD COLUMN ${col.name} ${col.definition};`);
-    } catch (err: any) {
-      const msg = String(err?.message || err);
-      // If column is already present, SQLite throws duplicate column name — safely ignore
-      if (!msg.toLowerCase().includes('duplicate column')) {
-        console.warn(`[db] Migration note for ${col.name}:`, err);
-      }
-    }
-  }
-
-  // Self-healing migration: check if tracks table enforces old CHECK constraint without 'created'
-  try {
-    const tableInfo = await db.getFirstAsync<{ sql: string }>(
-      "SELECT sql FROM sqlite_master WHERE type='table' AND name='tracks';"
-    );
-    const tableSql = tableInfo?.sql || '';
-    if (tableSql && !tableSql.includes("'created'") && !tableSql.includes('"created"')) {
-      console.log('[db] Migrating tracks table to support created and time-allocated statuses...');
-      await db.execAsync('PRAGMA foreign_keys = OFF;');
-      await db.execAsync(`
-        CREATE TABLE tracks_new (
-          id                   TEXT PRIMARY KEY,
-          remote_id            INTEGER,
-          title                TEXT NOT NULL,
-          description          TEXT NOT NULL DEFAULT '',
-          status               TEXT NOT NULL DEFAULT 'created'
-                                 CHECK(status IN ('created','pending','time-allocated','in-progress','completed')),
-          priority             TEXT NOT NULL DEFAULT 'medium'
-                                 CHECK(priority IN ('low','medium','high')),
-          task_type            TEXT NOT NULL DEFAULT 'unallocated'
-                                 CHECK(task_type IN ('unallocated','allocated')),
-          time_input_mode      TEXT CHECK(time_input_mode IN ('start-end','start-duration','duration-only')),
-          allocated_start_time TEXT,
-          allocated_end_time   TEXT,
-          block_multiplier     INTEGER,
-          duration_minutes     INTEGER,
-          start_time           TEXT NOT NULL,
-          end_time             TEXT,
-          created_at           TEXT NOT NULL,
-          updated_at           TEXT NOT NULL
-        );
-
-        INSERT INTO tracks_new (
-          id, remote_id, title, description, status, priority,
-          task_type, time_input_mode, allocated_start_time, allocated_end_time,
-          block_multiplier, duration_minutes,
-          start_time, end_time, created_at, updated_at
-        )
-        SELECT
-          id,
-          remote_id,
-          title,
-          COALESCE(description, ''),
-          CASE 
-            WHEN status IN ('created','pending','time-allocated','in-progress','completed') THEN status
-            ELSE 'created'
-          END,
-          COALESCE(priority, 'medium'),
-          COALESCE(task_type, 'unallocated'),
-          time_input_mode,
-          allocated_start_time,
-          allocated_end_time,
-          block_multiplier,
-          duration_minutes,
-          start_time,
-          end_time,
-          created_at,
-          updated_at
-        FROM tracks;
-
-        DROP TABLE tracks;
-        ALTER TABLE tracks_new RENAME TO tracks;
-      `);
-      await db.execAsync('PRAGMA foreign_keys = ON;');
-      console.log('[db] tracks table successfully migrated to new schema.');
-    }
-  } catch (err) {
-    console.error('[db] Error updating tracks table schema:', err);
-    await db.execAsync('PRAGMA foreign_keys = ON;').catch(() => {});
-  }
-
-  // ── tags table ─────────────────────────────────────────────────────────────
+  // ── 2. tags ────────────────────────────────────────────────────────────────
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS tags (
       id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -167,7 +73,7 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
     );
   `);
 
-  // ── daily_goals table ──────────────────────────────────────────────────────
+  // ── 3. daily_goals ─────────────────────────────────────────────────────────
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS daily_goals (
       id           TEXT PRIMARY KEY,
@@ -182,7 +88,7 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
     );
   `);
 
-  // ── weekly_goal_categories table ───────────────────────────────────────────
+  // ── 4. weekly_goal_categories ──────────────────────────────────────────────
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS weekly_goal_categories (
       id         TEXT PRIMARY KEY,
@@ -196,7 +102,16 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
     );
   `);
 
-  // ── weekly_goals table (3-tier hierarchy via self-referencing parent_id) ──
+  // Seed default categories
+  await db.execAsync(`
+    INSERT OR IGNORE INTO weekly_goal_categories (id, name, color, is_default, position, created_at, updated_at)
+    VALUES
+      ('cat-uni',      'Uni',      '#7C3AED', 1, 0, datetime('now'), datetime('now')),
+      ('cat-work',     'Work',     '#06B6D4', 1, 1, datetime('now'), datetime('now')),
+      ('cat-personal', 'Personal', '#10B981', 1, 2, datetime('now'), datetime('now'));
+  `);
+
+  // ── 5. weekly_goals ────────────────────────────────────────────────────────
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS weekly_goals (
       id           TEXT PRIMARY KEY,
@@ -214,7 +129,7 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
     );
   `);
 
-  // ── routines table ─────────────────────────────────────────────────────────
+  // ── 6. routines ────────────────────────────────────────────────────────────
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS routines (
       id          TEXT PRIMARY KEY,
@@ -229,7 +144,7 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
     );
   `);
 
-  // ── routine_sub_activities table ───────────────────────────────────────────
+  // ── 7. routine_sub_activities ──────────────────────────────────────────────
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS routine_sub_activities (
       id         TEXT PRIMARY KEY,
@@ -242,7 +157,7 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
     );
   `);
 
-  // ── routine_reminders table ────────────────────────────────────────────────
+  // ── 8. routine_reminders ───────────────────────────────────────────────────
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS routine_reminders (
       id         TEXT PRIMARY KEY,
@@ -255,7 +170,7 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
     );
   `);
 
-  // ── routine_activity_logs table ────────────────────────────────────────────
+  // ── 9. routine_activity_logs ───────────────────────────────────────────────
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS routine_activity_logs (
       id              TEXT PRIMARY KEY,
@@ -269,7 +184,7 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
     );
   `);
 
-  // ── checklists table ────────────────────────────────────────────────────────
+  // ── 10. checklists ─────────────────────────────────────────────────────────
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS checklists (
       id         TEXT PRIMARY KEY,
@@ -279,7 +194,7 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
     );
   `);
 
-  // ── checklist_items table (max 30 items per list) ──────────────────────────
+  // ── 11. checklist_items ────────────────────────────────────────────────────
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS checklist_items (
       id           TEXT PRIMARY KEY,
@@ -292,7 +207,7 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
     );
   `);
 
-  // ── sticky_notes table (max 10 notes, max 255 chars) ───────────────────────
+  // ── 12. sticky_notes ───────────────────────────────────────────────────────
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS sticky_notes (
       id         TEXT PRIMARY KEY,
@@ -303,122 +218,19 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
     );
   `);
 
-  // ── schema_version table ───────────────────────────────────────────────────
+  // ── 13. Performance Indexes ────────────────────────────────────────────────
   await db.execAsync(`
-    CREATE TABLE IF NOT EXISTS schema_version (
-      version INTEGER PRIMARY KEY
-    );
+    CREATE INDEX IF NOT EXISTS idx_tracks_status_type ON tracks(status, task_type);
+    CREATE INDEX IF NOT EXISTS idx_tracks_created_at ON tracks(created_at);
+    CREATE INDEX IF NOT EXISTS idx_tags_track_id ON tags(track_id);
+    CREATE INDEX IF NOT EXISTS idx_daily_goals_date ON daily_goals(date);
+    CREATE INDEX IF NOT EXISTS idx_weekly_goals_week_cat ON weekly_goals(week_label, category_id);
+    CREATE INDEX IF NOT EXISTS idx_routine_subs_routine_id ON routine_sub_activities(routine_id);
+    CREATE INDEX IF NOT EXISTS idx_routine_reminders_routine_id ON routine_reminders(routine_id);
+    CREATE INDEX IF NOT EXISTS idx_routine_logs_routine_date ON routine_activity_logs(routine_id, date);
+    CREATE INDEX IF NOT EXISTS idx_checklist_items_list_id ON checklist_items(list_id);
+    CREATE INDEX IF NOT EXISTS idx_sticky_notes_created_at ON sticky_notes(created_at);
   `);
-
-  const versionRow = await db.getFirstAsync<{ version: number }>(
-    'SELECT version FROM schema_version ORDER BY version DESC LIMIT 1;'
-  );
-  const currentVersion = versionRow?.version ?? 0;
-  await runMigrations(db, currentVersion);
-}
-
-async function runMigrations(
-  db: SQLite.SQLiteDatabase,
-  fromVersion: number
-): Promise<void> {
-  const migrations: Array<{ version: number; sql: string }> = [
-    {
-      version: 1,
-      sql: `INSERT OR IGNORE INTO schema_version(version) VALUES (1);`,
-    },
-    {
-      // v2: Add extended task fields if they don't already exist (ALTER TABLE is safe on SQLite)
-      version: 2,
-      sql: `
-        INSERT OR IGNORE INTO schema_version(version) VALUES (2);
-      `,
-    },
-    {
-      // v3: Seed default weekly goal categories
-      version: 3,
-      sql: `
-        INSERT OR IGNORE INTO weekly_goal_categories (id, name, color, is_default, position, created_at, updated_at)
-        VALUES
-          ('cat-uni',      'Uni',      '#7C3AED', 1, 0, datetime('now'), datetime('now')),
-          ('cat-work',     'Work',     '#06B6D4', 1, 1, datetime('now'), datetime('now')),
-          ('cat-personal', 'Personal', '#10B981', 1, 2, datetime('now'), datetime('now'));
-        INSERT OR IGNORE INTO schema_version(version) VALUES (3);
-      `,
-    },
-    {
-      // v4: routine tables already created above; just stamp version
-      version: 4,
-      sql: `INSERT OR IGNORE INTO schema_version(version) VALUES (4);`,
-    },
-    {
-      // v5: tracks status CHECK constraint update
-      version: 5,
-      sql: `INSERT OR IGNORE INTO schema_version(version) VALUES (5);`,
-    },
-    {
-      // v6: add status column to daily_goals and weekly_goals
-      version: 6,
-      sql: `
-        ALTER TABLE daily_goals ADD COLUMN status TEXT NOT NULL DEFAULT 'pending';
-        ALTER TABLE weekly_goals ADD COLUMN status TEXT NOT NULL DEFAULT 'pending';
-        UPDATE daily_goals SET status = CASE WHEN is_completed = 1 THEN 'completed' ELSE 'pending' END WHERE status = 'pending';
-        UPDATE weekly_goals SET status = CASE WHEN is_completed = 1 THEN 'completed' ELSE 'pending' END WHERE status = 'pending';
-        INSERT OR IGNORE INTO schema_version(version) VALUES (6);
-      `,
-    },
-    {
-      // v7: Performance indexes on frequently filtered and joined columns
-      version: 7,
-      sql: `
-        CREATE INDEX IF NOT EXISTS idx_tracks_status_type ON tracks(status, task_type);
-        CREATE INDEX IF NOT EXISTS idx_tracks_created_at ON tracks(created_at);
-        CREATE INDEX IF NOT EXISTS idx_tags_track_id ON tags(track_id);
-        CREATE INDEX IF NOT EXISTS idx_daily_goals_date ON daily_goals(date);
-        CREATE INDEX IF NOT EXISTS idx_weekly_goals_week_cat ON weekly_goals(week_label, category_id);
-        CREATE INDEX IF NOT EXISTS idx_routine_subs_routine_id ON routine_sub_activities(routine_id);
-        CREATE INDEX IF NOT EXISTS idx_routine_reminders_routine_id ON routine_reminders(routine_id);
-        CREATE INDEX IF NOT EXISTS idx_routine_logs_routine_date ON routine_activity_logs(routine_id, date);
-        INSERT OR IGNORE INTO schema_version(version) VALUES (7);
-      `,
-    },
-    {
-      // v8: Checklists, checklist_items, and sticky_notes with indexes
-      version: 8,
-      sql: `
-        CREATE TABLE IF NOT EXISTS checklists (
-          id         TEXT PRIMARY KEY,
-          title      TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS checklist_items (
-          id           TEXT PRIMARY KEY,
-          list_id      TEXT NOT NULL REFERENCES checklists(id) ON DELETE CASCADE,
-          text         TEXT NOT NULL,
-          is_completed INTEGER NOT NULL DEFAULT 0,
-          position     INTEGER NOT NULL DEFAULT 0,
-          created_at   TEXT NOT NULL,
-          updated_at   TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS sticky_notes (
-          id         TEXT PRIMARY KEY,
-          content    TEXT NOT NULL CHECK(length(content) <= 255),
-          color      TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_checklist_items_list_id ON checklist_items(list_id);
-        CREATE INDEX IF NOT EXISTS idx_sticky_notes_created_at ON sticky_notes(created_at);
-        INSERT OR IGNORE INTO schema_version(version) VALUES (8);
-      `,
-    },
-  ];
-
-  for (const migration of migrations) {
-    if (migration.version > fromVersion) {
-      await db.execAsync(migration.sql);
-    }
-  }
 }
 
 /**
@@ -548,7 +360,7 @@ export async function resetDatabase(): Promise<void> {
     } catch (e) {
       console.warn('[db] error deleting DB file:', e);
     }
-    const freshDb = await SQLite.openDatabaseAsync('time_tracker.db');
+    const freshDb = await SQLite.openDatabaseAsync('time_tracker.db', { useNewConnection: true });
     await initDatabase(freshDb);
     _db = freshDb;
     return freshDb;
