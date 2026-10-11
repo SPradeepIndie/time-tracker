@@ -5,73 +5,61 @@ import (
 	"fmt"
 )
 
-// Migrate runs all database migrations in order.
-// Each migration is idempotent (CREATE TABLE IF NOT EXISTS).
+// Migrate runs the initial database schema creation.
+// All statements are idempotent (CREATE TABLE IF NOT EXISTS / CREATE INDEX IF NOT EXISTS).
 func Migrate(db *sql.DB) (error, string) {
 	migrations := []struct {
 		name string
 		sql  string
 	}{
 		{
-			name: "v1_tracker",
+			name: "init_schema",
 			sql: `
+			-- 1. tracker
 			CREATE TABLE IF NOT EXISTS tracker (
-				id          SERIAL PRIMARY KEY,
-				task        TEXT NOT NULL CHECK (length(task) > 0),
-				start_time  TIMESTAMP NOT NULL,
-				end_time    TIMESTAMP,
-				created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-				updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-			);`,
-		},
-		{
-			name: "v2_tracker_extended",
-			sql: `
-			-- Extend tracker table with full task management fields
-			ALTER TABLE tracker ADD COLUMN IF NOT EXISTS title       TEXT;
-			ALTER TABLE tracker ADD COLUMN IF NOT EXISTS description TEXT DEFAULT '';
-			ALTER TABLE tracker ADD COLUMN IF NOT EXISTS status      TEXT NOT NULL DEFAULT 'created'
-			    CHECK (status IN ('created','pending','time-allocated','in-progress','completed'));
-			ALTER TABLE tracker ADD COLUMN IF NOT EXISTS priority    TEXT NOT NULL DEFAULT 'medium'
-			    CHECK (priority IN ('low','medium','high'));
-			ALTER TABLE tracker ADD COLUMN IF NOT EXISTS task_type   TEXT NOT NULL DEFAULT 'unallocated'
-			    CHECK (task_type IN ('unallocated','allocated'));
-			ALTER TABLE tracker ADD COLUMN IF NOT EXISTS time_input_mode TEXT
-			    CHECK (time_input_mode IN ('start-end','start-duration','duration-only'));
-			ALTER TABLE tracker ADD COLUMN IF NOT EXISTS allocated_start_time TIMESTAMP;
-			ALTER TABLE tracker ADD COLUMN IF NOT EXISTS allocated_end_time   TIMESTAMP;
-			ALTER TABLE tracker ADD COLUMN IF NOT EXISTS block_multiplier     INTEGER;
-			ALTER TABLE tracker ADD COLUMN IF NOT EXISTS duration_minutes     INTEGER;`,
-		},
-		{
-			name: "v2_tags",
-			sql: `
+				id                   SERIAL PRIMARY KEY,
+				task                 TEXT NOT NULL CHECK (length(task) > 0),
+				title                TEXT,
+				description          TEXT DEFAULT '',
+				status               TEXT NOT NULL DEFAULT 'created'
+				                       CHECK (status IN ('created','pending','time-allocated','in-progress','completed')),
+				priority             TEXT NOT NULL DEFAULT 'medium'
+				                       CHECK (priority IN ('low','medium','high')),
+				task_type            TEXT NOT NULL DEFAULT 'unallocated'
+				                       CHECK (task_type IN ('unallocated','allocated')),
+				time_input_mode      TEXT CHECK (time_input_mode IN ('start-end','start-duration','duration-only')),
+				allocated_start_time TIMESTAMP,
+				allocated_end_time   TIMESTAMP,
+				block_multiplier     INTEGER,
+				duration_minutes     INTEGER,
+				position             INTEGER NOT NULL DEFAULT 0,
+				start_time           TIMESTAMP NOT NULL,
+				end_time             TIMESTAMP,
+				created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				updated_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+			);
+
+			-- 2. tags
 			CREATE TABLE IF NOT EXISTS tags (
 				id        SERIAL PRIMARY KEY,
 				track_id  INTEGER NOT NULL REFERENCES tracker(id) ON DELETE CASCADE,
 				name      TEXT    NOT NULL,
 				UNIQUE(track_id, name)
-			);`,
-		},
-		{
-			name: "v3_daily_goals",
-			sql: `
-			-- Daily goals (Plan for Tomorrow pattern, max 10 per day)
+			);
+
+			-- 3. daily_goals
 			CREATE TABLE IF NOT EXISTS daily_goals (
 				id           SERIAL PRIMARY KEY,
 				date         DATE NOT NULL,
 				text         TEXT NOT NULL CHECK (length(text) > 0),
+				status       VARCHAR(32) NOT NULL DEFAULT 'pending',
 				is_completed BOOLEAN NOT NULL DEFAULT FALSE,
 				position     INTEGER NOT NULL DEFAULT 0,
 				created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 				updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 			);
-			CREATE INDEX IF NOT EXISTS idx_daily_goals_date ON daily_goals(date);`,
-		},
-		{
-			name: "v3_weekly_goal_categories",
-			sql: `
-			-- Weekly goal categories (Uni, Work, Personal + custom)
+
+			-- 4. weekly_goal_categories
 			CREATE TABLE IF NOT EXISTS weekly_goal_categories (
 				id         SERIAL PRIMARY KEY,
 				name       TEXT    NOT NULL UNIQUE,
@@ -82,38 +70,29 @@ func Migrate(db *sql.DB) (error, string) {
 				updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 			);
 
-			-- Seed default categories
 			INSERT INTO weekly_goal_categories (name, color, is_default, position)
 			VALUES
 				('Uni',      '#7C3AED', TRUE, 0),
 				('Work',     '#06B6D4', TRUE, 1),
 				('Personal', '#10B981', TRUE, 2)
-			ON CONFLICT (name) DO NOTHING;`,
-		},
-		{
-			name: "v3_weekly_goals",
-			sql: `
-			-- Weekly goals: 3-tier hierarchy (Goal > Sub-Goal > Sub-Sub-Goal)
-			-- Max 5 children per parent enforced at application layer
+			ON CONFLICT (name) DO NOTHING;
+
+			-- 5. weekly_goals
 			CREATE TABLE IF NOT EXISTS weekly_goals (
 				id           SERIAL PRIMARY KEY,
-				week_label   TEXT    NOT NULL,         -- e.g., "2026-W36"
+				week_label   TEXT    NOT NULL,
 				category_id  INTEGER NOT NULL REFERENCES weekly_goal_categories(id) ON DELETE CASCADE,
 				parent_id    INTEGER REFERENCES weekly_goals(id) ON DELETE CASCADE,
 				tier         INTEGER NOT NULL DEFAULT 1 CHECK (tier IN (1, 2, 3)),
 				text         TEXT    NOT NULL CHECK (length(text) > 0),
+				status       VARCHAR(32) NOT NULL DEFAULT 'pending',
 				is_completed BOOLEAN NOT NULL DEFAULT FALSE,
 				position     INTEGER NOT NULL DEFAULT 0,
 				created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 				updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 			);
-			CREATE INDEX IF NOT EXISTS idx_weekly_goals_week ON weekly_goals(week_label);
-			CREATE INDEX IF NOT EXISTS idx_weekly_goals_cat  ON weekly_goals(category_id);`,
-		},
-		{
-			name: "v4_routines",
-			sql: `
-			-- Routines: named behavioral checklists
+
+			-- 6. routines
 			CREATE TABLE IF NOT EXISTS routines (
 				id          SERIAL PRIMARY KEY,
 				name        TEXT    NOT NULL,
@@ -123,12 +102,9 @@ func Migrate(db *sql.DB) (error, string) {
 				is_active   BOOLEAN NOT NULL DEFAULT TRUE,
 				created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 				updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-			);`,
-		},
-		{
-			name: "v4_routine_sub_activities",
-			sql: `
-			-- Sub-activities: granular steps inside a routine
+			);
+
+			-- 7. routine_sub_activities
 			CREATE TABLE IF NOT EXISTS routine_sub_activities (
 				id         SERIAL PRIMARY KEY,
 				routine_id INTEGER NOT NULL REFERENCES routines(id) ON DELETE CASCADE,
@@ -136,12 +112,9 @@ func Migrate(db *sql.DB) (error, string) {
 				position   INTEGER NOT NULL DEFAULT 0,
 				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 				updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-			);`,
-		},
-		{
-			name: "v4_routine_reminders",
-			sql: `
-			-- Reminder matrix: multiple configurable alert times per routine
+			);
+
+			-- 8. routine_reminders
 			CREATE TABLE IF NOT EXISTS routine_reminders (
 				id         SERIAL PRIMARY KEY,
 				routine_id INTEGER NOT NULL REFERENCES routines(id) ON DELETE CASCADE,
@@ -150,12 +123,9 @@ func Migrate(db *sql.DB) (error, string) {
 				is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
 				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 				updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-			);`,
-		},
-		{
-			name: "v4_routine_activity_logs",
-			sql: `
-			-- Daily activity logs: per-day completion record per sub-activity
+			);
+
+			-- 9. routine_activity_logs
 			CREATE TABLE IF NOT EXISTS routine_activity_logs (
 				id              SERIAL PRIMARY KEY,
 				routine_id      INTEGER NOT NULL REFERENCES routines(id) ON DELETE CASCADE,
@@ -166,40 +136,8 @@ func Migrate(db *sql.DB) (error, string) {
 				created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 				UNIQUE(sub_activity_id, date)
 			);
-			CREATE INDEX IF NOT EXISTS idx_activity_logs_date ON routine_activity_logs(date);`,
-		},
-		{
-			name: "v5_goal_status_enum",
-			sql: `
-			-- Add status column (pending, completed, overdue, completed_overdue) to daily and weekly goals
-			ALTER TABLE daily_goals ADD COLUMN IF NOT EXISTS status VARCHAR(32) NOT NULL DEFAULT 'pending';
-			ALTER TABLE weekly_goals ADD COLUMN IF NOT EXISTS status VARCHAR(32) NOT NULL DEFAULT 'pending';
-			UPDATE daily_goals SET status = CASE WHEN is_completed = TRUE THEN 'completed' ELSE 'pending' END WHERE status = 'pending';
-			UPDATE weekly_goals SET status = CASE WHEN is_completed = TRUE THEN 'completed' ELSE 'pending' END WHERE status = 'pending';`,
-		},
-		{
-			name: "v6_track_position",
-			sql: `
-			-- Add position column for drag-and-drop custom ordering of tasks
-			ALTER TABLE tracker ADD COLUMN IF NOT EXISTS position INTEGER NOT NULL DEFAULT 0;`,
-		},
-		{
-			name: "v7_performance_indexes",
-			sql: `
-			-- Performance indexes on frequently filtered and joined columns
-			CREATE INDEX IF NOT EXISTS idx_tracker_status_type ON tracker(status, task_type);
-			CREATE INDEX IF NOT EXISTS idx_tracker_created_at ON tracker(created_at);
-			CREATE INDEX IF NOT EXISTS idx_tags_track_id ON tags(track_id);
-			CREATE INDEX IF NOT EXISTS idx_daily_goals_date ON daily_goals(date);
-			CREATE INDEX IF NOT EXISTS idx_weekly_goals_week_cat ON weekly_goals(week_label, category_id);
-			CREATE INDEX IF NOT EXISTS idx_routine_subs_routine_id ON routine_sub_activities(routine_id);
-			CREATE INDEX IF NOT EXISTS idx_routine_reminders_routine_id ON routine_reminders(routine_id);
-			CREATE INDEX IF NOT EXISTS idx_routine_logs_routine_date ON routine_activity_logs(routine_id, date);`,
-		},
-		{
-			name: "v8_checklists_and_sticky_notes",
-			sql: `
-			-- Checklists table (max 5 lists)
+
+			-- 10. checklists
 			CREATE TABLE IF NOT EXISTS checklists (
 				id         VARCHAR(64) PRIMARY KEY,
 				title      TEXT NOT NULL,
@@ -207,7 +145,7 @@ func Migrate(db *sql.DB) (error, string) {
 				updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 			);
 
-			-- Checklist items table (max 30 items per list)
+			-- 11. checklist_items
 			CREATE TABLE IF NOT EXISTS checklist_items (
 				id           VARCHAR(64) PRIMARY KEY,
 				list_id      VARCHAR(64) NOT NULL REFERENCES checklists(id) ON DELETE CASCADE,
@@ -217,9 +155,8 @@ func Migrate(db *sql.DB) (error, string) {
 				created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 				updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 			);
-			CREATE INDEX IF NOT EXISTS idx_checklist_items_list_id ON checklist_items(list_id);
 
-			-- Sticky notes table (max 10 notes, max 255 chars)
+			-- 12. sticky_notes
 			CREATE TABLE IF NOT EXISTS sticky_notes (
 				id         VARCHAR(64) PRIMARY KEY,
 				content    VARCHAR(255) NOT NULL,
@@ -227,7 +164,21 @@ func Migrate(db *sql.DB) (error, string) {
 				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 				updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 			);
-			CREATE INDEX IF NOT EXISTS idx_sticky_notes_created_at ON sticky_notes(created_at);`,
+
+			-- 13. Performance Indexes
+			CREATE INDEX IF NOT EXISTS idx_tracker_status_type ON tracker(status, task_type);
+			CREATE INDEX IF NOT EXISTS idx_tracker_created_at ON tracker(created_at);
+			CREATE INDEX IF NOT EXISTS idx_tags_track_id ON tags(track_id);
+			CREATE INDEX IF NOT EXISTS idx_daily_goals_date ON daily_goals(date);
+			CREATE INDEX IF NOT EXISTS idx_weekly_goals_week ON weekly_goals(week_label);
+			CREATE INDEX IF NOT EXISTS idx_weekly_goals_cat ON weekly_goals(category_id);
+			CREATE INDEX IF NOT EXISTS idx_weekly_goals_week_cat ON weekly_goals(week_label, category_id);
+			CREATE INDEX IF NOT EXISTS idx_routine_subs_routine_id ON routine_sub_activities(routine_id);
+			CREATE INDEX IF NOT EXISTS idx_routine_reminders_routine_id ON routine_reminders(routine_id);
+			CREATE INDEX IF NOT EXISTS idx_routine_logs_routine_date ON routine_activity_logs(routine_id, date);
+			CREATE INDEX IF NOT EXISTS idx_checklist_items_list_id ON checklist_items(list_id);
+			CREATE INDEX IF NOT EXISTS idx_sticky_notes_created_at ON sticky_notes(created_at);
+			`,
 		},
 	}
 
