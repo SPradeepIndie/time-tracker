@@ -4,7 +4,7 @@
  * Shown on every app launch when a PIN is set.
  * Biometric is attempted automatically first; fallback is the 4-digit PIN pad.
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -19,23 +19,44 @@ import * as Crypto from 'expo-crypto';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types/Track';
 import { useTheme } from '../../context/ThemeContext';
+import {
+  hashPinWithSalt,
+  generatePinSalt,
+  PIN_HASH_KEY,
+  PIN_SALT_KEY,
+} from '../../services/storage/encryption';
 
-const PIN_HASH_KEY = 'app_pin_hash';
 const PIN_LENGTH = 4;
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_SECONDS = 30;
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Auth'>;
 };
-
-async function hashPin(pin: string): Promise<string> {
-  return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, pin);
-}
 
 export default function AuthScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [lockoutRemaining, setLockoutRemaining] = useState(0);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // ── Lockout countdown ─────────────────────────────────────────────────────
+  useEffect(() => {
+    if (lockoutRemaining > 0) {
+      timerRef.current = setTimeout(() => {
+        setLockoutRemaining((prev) => prev - 1);
+      }, 1000);
+    } else if (lockoutRemaining === 0 && failedAttempts >= MAX_ATTEMPTS) {
+      setFailedAttempts(0);
+      setError('');
+    }
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [lockoutRemaining, failedAttempts]);
 
   // ── Biometric on mount ────────────────────────────────────────────────────
   useEffect(() => {
@@ -64,6 +85,11 @@ export default function AuthScreen({ navigation }: Props) {
 
   // ── PIN pad logic ─────────────────────────────────────────────────────────
   const handleKey = useCallback(async (key: string) => {
+    if (lockoutRemaining > 0) {
+      Vibration.vibrate(100);
+      return;
+    }
+
     if (key === '⌫') {
       setPin((p) => p.slice(0, -1));
       setError('');
@@ -75,18 +101,57 @@ export default function AuthScreen({ navigation }: Props) {
 
     if (next.length === PIN_LENGTH) {
       const storedHash = await SecureStore.getItemAsync(PIN_HASH_KEY);
-      const enteredHash = await hashPin(next);
+      const storedSalt = await SecureStore.getItemAsync(PIN_SALT_KEY);
 
-      if (enteredHash === storedHash) {
+      let isMatch = false;
+
+      if (storedSalt) {
+        const enteredHash = await hashPinWithSalt(next, storedSalt);
+        isMatch = enteredHash === storedHash;
+      } else {
+        // Legacy migration check: verify old unsalted SHA-256 hash
+        const legacyHash = await Crypto.digestStringAsync(
+          Crypto.CryptoDigestAlgorithm.SHA256,
+          next
+        );
+        if (legacyHash === storedHash) {
+          isMatch = true;
+          // Auto-upgrade to salted stretched PIN hash
+          try {
+            const newSalt = await generatePinSalt();
+            const newHash = await hashPinWithSalt(next, newSalt);
+            await SecureStore.setItemAsync(PIN_SALT_KEY, newSalt, {
+              keychainAccessible: SecureStore.WHEN_UNLOCKED,
+            });
+            await SecureStore.setItemAsync(PIN_HASH_KEY, newHash, {
+              keychainAccessible: SecureStore.WHEN_UNLOCKED,
+            });
+          } catch (e) {
+            console.warn('[auth] Could not auto-upgrade legacy PIN hash:', e);
+          }
+        }
+      }
+
+      if (isMatch) {
+        setFailedAttempts(0);
         setError('');
         navigation.replace('MainTabs');
       } else {
+        const nextAttempts = failedAttempts + 1;
+        setFailedAttempts(nextAttempts);
         Vibration.vibrate(300);
-        setError('Incorrect PIN. Try again.');
+
+        if (nextAttempts >= MAX_ATTEMPTS) {
+          setLockoutRemaining(LOCKOUT_SECONDS);
+          setError(`Too many failed attempts. Locked for ${LOCKOUT_SECONDS}s.`);
+        } else {
+          const left = MAX_ATTEMPTS - nextAttempts;
+          setError(`Incorrect PIN. ${left} attempt${left === 1 ? '' : 's'} remaining.`);
+        }
         setTimeout(() => setPin(''), 400);
       }
     }
-  }, [pin, navigation]);
+  }, [pin, navigation, lockoutRemaining, failedAttempts]);
 
   const s = makeStyles(colors);
 
@@ -112,9 +177,9 @@ export default function AuthScreen({ navigation }: Props) {
         {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].map((k) => (
           <TouchableOpacity
             key={k}
-            style={[s.key, k === '' && s.keyEmpty]}
+            style={[s.key, (k === '' || lockoutRemaining > 0) && s.keyEmpty]}
             onPress={() => k !== '' && handleKey(k)}
-            disabled={k === ''}
+            disabled={k === '' || lockoutRemaining > 0}
             activeOpacity={0.6}
           >
             <Text style={s.keyText}>{k}</Text>

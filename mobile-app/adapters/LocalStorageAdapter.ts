@@ -8,6 +8,7 @@ import { ITrackRepository } from './ITrackRepository';
 import { Track } from '../types/Track';
 import { getDatabase } from '../services/storage/db';
 import { getOrCreateEncryptionKey, deleteEncryptionKey } from '../services/storage/encryption';
+import * as Crypto from 'expo-crypto';
 import {
   queryGetAll,
   queryGetById,
@@ -21,15 +22,18 @@ import {
 } from '../services/storage/trackQueries';
 
 /**
- * UUID v4 generator — pure Math.random(), no crypto global needed.
- * crypto.randomUUID() is NOT available in Expo Go's Hermes runtime.
+ * Cryptographically secure UUID v4 generator via expo-crypto
  */
 function generateUUID(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = Math.floor(Math.random() * 16);
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
+  try {
+    return Crypto.randomUUID();
+  } catch {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = Math.floor(Math.random() * 16);
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
 }
 
 export class LocalStorageAdapter implements ITrackRepository {

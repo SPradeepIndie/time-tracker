@@ -6,6 +6,7 @@
  */
 import { SQLiteDatabase } from 'expo-sqlite';
 import { Routine, SubActivity, RoutineReminder, RoutineActivityLog } from '../../types/Routine';
+import { getOrCreateEncryptionKey, encrypt, decrypt } from './encryption';
 
 // ── Row types ─────────────────────────────────────────────────────────────────
 
@@ -37,10 +38,10 @@ function rowToRoutine(r: RoutineRow): Routine {
     createdAt: new Date(r.created_at), updatedAt: new Date(r.updated_at),
   };
 }
-function rowToSubActivity(r: SubActivityRow): SubActivity {
+async function rowToSubActivity(r: SubActivityRow, key: string): Promise<SubActivity> {
   return {
     id: r.id, remoteId: r.remote_id ?? undefined, routineId: r.routine_id,
-    text: r.text, position: r.position,
+    text: await decrypt(r.text, key), position: r.position,
     createdAt: new Date(r.created_at), updatedAt: new Date(r.updated_at),
   };
 }
@@ -116,22 +117,25 @@ export async function queryGetSubActivities(
   db: SQLiteDatabase,
   routineId: string
 ): Promise<SubActivity[]> {
+  const key = await getOrCreateEncryptionKey();
   const rows = await db.getAllAsync<SubActivityRow>(
     'SELECT * FROM routine_sub_activities WHERE routine_id=? ORDER BY position ASC;',
     [routineId]
   );
-  return rows.map(rowToSubActivity);
+  return Promise.all(rows.map((r) => rowToSubActivity(r, key)));
 }
 
 export async function queryCreateSubActivity(
   db: SQLiteDatabase,
   activity: Omit<SubActivity, 'createdAt' | 'updatedAt'>
 ): Promise<SubActivity> {
+  const key = await getOrCreateEncryptionKey();
+  const encText = await encrypt(activity.text, key);
   const now = new Date().toISOString();
   await db.runAsync(
     `INSERT INTO routine_sub_activities (id, remote_id, routine_id, text, position, created_at, updated_at)
      VALUES (?,?,?,?,?,?,?);`,
-    [activity.id, activity.remoteId ?? null, activity.routineId, activity.text, activity.position, now, now]
+    [activity.id, activity.remoteId ?? null, activity.routineId, encText, activity.position, now, now]
   );
   return { ...activity, createdAt: new Date(now), updatedAt: new Date(now) };
 }
@@ -141,9 +145,11 @@ export async function queryUpdateSubActivity(
   id: string,
   text: string
 ): Promise<void> {
+  const key = await getOrCreateEncryptionKey();
+  const encText = await encrypt(text, key);
   await db.runAsync(
     'UPDATE routine_sub_activities SET text=?, updated_at=? WHERE id=?;',
-    [text, new Date().toISOString(), id]
+    [encText, new Date().toISOString(), id]
   );
 }
 

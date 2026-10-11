@@ -103,3 +103,29 @@ For the Build-Tools:
 ```
 *(Check your build logs for the exact version numbers it requires).*
 Once installed, run `npx expo run:android` again and Gradle will instantly skip the download.
+
+---
+
+## 6. Run the Debug App via ADB
+
+When running or testing an installed Debug APK on a connected device, React Native requires the Metro bundler to serve the JavaScript bundle. Follow these steps to connect and launch:
+
+### Step 1: Start the Metro Bundler
+Start the development server in your terminal:
+```bash
+cd mobile-app
+npx expo start
+```
+
+### Step 2: Forward the Port over USB
+Ensure your phone is plugged in with USB debugging enabled (`adb devices`) and forward port 8081:
+```bash
+adb reverse tcp:8081 tcp:8081
+```
+
+### Step 3: Launch the App via ADB
+Launch the application directly:
+```bash
+adb shell am start -n com.sanjayapradeep.timetracker/.MainActivity
+```
+*(Note: If launching an older build that still uses the previous package name, use `adb shell am start -n com.anonymous.mobileapp/.MainActivity`).*

@@ -7,7 +7,7 @@ import { SyncProvider } from './context/SyncContext';
 import { TrackProvider } from './context/TrackContext';
 import { GoalProvider } from './context/GoalContext';
 import { RoutineProvider } from './context/RoutineContext';
-import { RootNavigator } from './navigation';
+import { RootNavigator, navigationRef } from './navigation';
 import { bootstrapSystemNotifications } from './services/notifications/notificationService';
 
 function AppContent() {
@@ -19,7 +19,7 @@ function AppContent() {
   }, []);
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <RootNavigator />
       <StatusBar style={isDark ? 'light' : 'dark'} />
     </NavigationContainer>
