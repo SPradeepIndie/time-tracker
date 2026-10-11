@@ -269,6 +269,40 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
     );
   `);
 
+  // ── checklists table ────────────────────────────────────────────────────────
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS checklists (
+      id         TEXT PRIMARY KEY,
+      title      TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
+
+  // ── checklist_items table (max 30 items per list) ──────────────────────────
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS checklist_items (
+      id           TEXT PRIMARY KEY,
+      list_id      TEXT NOT NULL REFERENCES checklists(id) ON DELETE CASCADE,
+      text         TEXT NOT NULL,
+      is_completed INTEGER NOT NULL DEFAULT 0,
+      position     INTEGER NOT NULL DEFAULT 0,
+      created_at   TEXT NOT NULL,
+      updated_at   TEXT NOT NULL
+    );
+  `);
+
+  // ── sticky_notes table (max 10 notes, max 255 chars) ───────────────────────
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS sticky_notes (
+      id         TEXT PRIMARY KEY,
+      content    TEXT NOT NULL CHECK(length(content) <= 255),
+      color      TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
+
   // ── schema_version table ───────────────────────────────────────────────────
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS schema_version (
@@ -347,6 +381,37 @@ async function runMigrations(
         INSERT OR IGNORE INTO schema_version(version) VALUES (7);
       `,
     },
+    {
+      // v8: Checklists, checklist_items, and sticky_notes with indexes
+      version: 8,
+      sql: `
+        CREATE TABLE IF NOT EXISTS checklists (
+          id         TEXT PRIMARY KEY,
+          title      TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS checklist_items (
+          id           TEXT PRIMARY KEY,
+          list_id      TEXT NOT NULL REFERENCES checklists(id) ON DELETE CASCADE,
+          text         TEXT NOT NULL,
+          is_completed INTEGER NOT NULL DEFAULT 0,
+          position     INTEGER NOT NULL DEFAULT 0,
+          created_at   TEXT NOT NULL,
+          updated_at   TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS sticky_notes (
+          id         TEXT PRIMARY KEY,
+          content    TEXT NOT NULL CHECK(length(content) <= 255),
+          color      TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_checklist_items_list_id ON checklist_items(list_id);
+        CREATE INDEX IF NOT EXISTS idx_sticky_notes_created_at ON sticky_notes(created_at);
+        INSERT OR IGNORE INTO schema_version(version) VALUES (8);
+      `,
+    },
   ];
 
   for (const migration of migrations) {
@@ -375,6 +440,8 @@ export interface StorageDetailStats {
   weeklyGoalCount: number;
   routineCount: number;
   routineLogCount: number;
+  checklistCount?: number;
+  stickyNoteCount?: number;
   dbSizeBytes: number;
 }
 
@@ -389,22 +456,28 @@ export async function getStorageStats(): Promise<StorageDetailStats> {
     let weeklyGoalCount = 0;
     let routineCount = 0;
     let routineLogCount = 0;
+    let checklistCount = 0;
+    let stickyNoteCount = 0;
     let pageCount = 0;
     let pageSize = 4096;
 
     try {
-      const [tRow, dgRow, wgRow, rRow, rlRow] = await Promise.all([
+      const [tRow, dgRow, wgRow, rRow, rlRow, clRow, snRow] = await Promise.all([
         db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM tracks;'),
         db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM daily_goals;'),
         db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM weekly_goals;'),
         db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM routines;'),
         db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM routine_activity_logs;'),
+        db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM checklists;'),
+        db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM sticky_notes;'),
       ]);
       taskCount = tRow?.count ?? 0;
       dailyGoalCount = dgRow?.count ?? 0;
       weeklyGoalCount = wgRow?.count ?? 0;
       routineCount = rRow?.count ?? 0;
       routineLogCount = rlRow?.count ?? 0;
+      checklistCount = clRow?.count ?? 0;
+      stickyNoteCount = snRow?.count ?? 0;
     } catch (err) {
       console.warn('[db] getStorageStats count error:', err);
     }
@@ -434,6 +507,8 @@ export async function getStorageStats(): Promise<StorageDetailStats> {
       weeklyGoalCount,
       routineCount,
       routineLogCount,
+      checklistCount,
+      stickyNoteCount,
       dbSizeBytes,
     };
   } catch (e) {
@@ -444,6 +519,8 @@ export async function getStorageStats(): Promise<StorageDetailStats> {
       weeklyGoalCount: 0,
       routineCount: 0,
       routineLogCount: 0,
+      checklistCount: 0,
+      stickyNoteCount: 0,
       dbSizeBytes: 0,
     };
   }

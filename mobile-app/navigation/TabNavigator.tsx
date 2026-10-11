@@ -10,6 +10,7 @@ import HomeScreen from '../screens/home/HomeScreen';
 import GoalsScreen from '../screens/goals/GoalsScreen';
 import RoutinesScreen from '../screens/routines/RoutinesScreen';
 import AnalyticsScreen from '../screens/analytics/AnalyticsScreen';
+import ListsScreen from '../screens/lists/ListsScreen';
 import SettingsScreen from '../screens/settings/SettingsScreen';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -80,6 +81,16 @@ export const TabNavigator: React.FC = () => {
             <AppIcon name="repeat" size={22} color={color} />
           ),
           tabBarLabel: 'Routines',
+        }}
+      />
+      <Tab.Screen
+        name="Lists"
+        component={ListsScreen}
+        options={{
+          tabBarIcon: ({ color, focused }) => (
+            <AppIcon name={focused ? 'list' : 'list-outline'} size={22} color={color} />
+          ),
+          tabBarLabel: 'Lists',
         }}
       />
       <Tab.Screen

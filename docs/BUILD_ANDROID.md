@@ -129,3 +129,45 @@ Launch the application directly:
 adb shell am start -n com.sanjayapradeep.timetracker/.MainActivity
 ```
 *(Note: If launching an older build that still uses the previous package name, use `adb shell am start -n com.anonymous.mobileapp/.MainActivity`).*
+
+---
+
+## 7. Build and Install Standalone Release APKs
+
+A Release APK packages the offline JavaScript code directly into the APK so it runs standalone without requiring the Metro bundler.
+
+### Step 1: Build the Release APK
+```bash
+cd mobile-app/android
+./gradlew assembleRelease
+```
+
+### Step 2: Choose the Correct Architecture (ABI) APK
+Gradle may generate split APKs per architecture inside `app/build/outputs/apk/release/`:
+
+| APK File | Architecture | What It's For |
+| :--- | :--- | :--- |
+| **`app-arm64-v8a-release.apk`** | **64-bit ARM** | **Physical Android smartphones (Samsung, Xiaomi, Pixel, OnePlus, etc.). Use this!** |
+| `app-armeabi-v7a-release.apk` | 32-bit ARM | Older legacy 32-bit phones. |
+| `app-x86_64-release.apk` | 64-bit x86 | Android Studio Emulators on PC / Mac. |
+| `app-universal-release.apk` *(or `app-release.apk`)* | Universal | All architectures (larger file size). |
+
+> **Verify device architecture:** Run `adb shell getprop ro.product.cpu.abi` (modern phones output `arm64-v8a`).
+
+### Step 3: Install via ADB
+From `mobile-app/android`:
+```bash
+# For physical phones:
+adb install -r app/build/outputs/apk/release/app-arm64-v8a-release.apk
+
+# Or if an un-split universal APK was generated:
+adb install -r app/build/outputs/apk/release/app-release.apk
+```
+*(Or from the repository root, prepend `mobile-app/android/`).*
+
+> **Tip:** The `-r` flag reinstalls / updates the existing app while preserving local database data.
+
+### Step 4: Launch via ADB
+```bash
+adb shell am start -n com.sanjayapradeep.timetracker/.MainActivity
+```

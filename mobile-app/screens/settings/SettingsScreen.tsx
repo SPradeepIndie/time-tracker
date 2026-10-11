@@ -456,6 +456,16 @@ export default function SettingsScreen({ navigation }: Props) {
               <Text style={s.statBadge}>{storageStats.routineCount} / {storageStats.routineLogCount} logs</Text>
             </View>
             <View style={s.divider} />
+            <View style={s.row}>
+              <View style={s.rowLeft}>
+                <Text style={s.rowLabel}>Checklists & Sticky Notes</Text>
+                <Text style={s.rowDesc}>Simple lists / colored sticky notes</Text>
+              </View>
+              <Text style={s.statBadge}>
+                {storageStats.checklistCount ?? 0} lists / {storageStats.stickyNoteCount ?? 0} notes
+              </Text>
+            </View>
+            <View style={s.divider} />
             <View style={[s.row, s.rowLast]}>
               <View style={s.rowLeft}>
                 <Text style={s.rowLabel}>SQLite Database Footprint</Text>

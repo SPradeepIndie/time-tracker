@@ -7,6 +7,7 @@ import { SyncProvider } from './context/SyncContext';
 import { TrackProvider } from './context/TrackContext';
 import { GoalProvider } from './context/GoalContext';
 import { RoutineProvider } from './context/RoutineContext';
+import { ListProvider } from './context/ListContext';
 import { RootNavigator, navigationRef } from './navigation';
 import { bootstrapSystemNotifications } from './services/notifications/notificationService';
 
@@ -35,7 +36,9 @@ export default function App() {
           <TrackProvider>
             <GoalProvider>
               <RoutineProvider>
-                <AppContent />
+                <ListProvider>
+                  <AppContent />
+                </ListProvider>
               </RoutineProvider>
             </GoalProvider>
           </TrackProvider>
