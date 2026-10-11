@@ -7,7 +7,7 @@
  *  - Interactive Status Dropdown / Transition Modal conforming to state machine rules
  *  - Auto-transition: automatically transitions time-allocated tasks to in-progress when clock hits start time
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -138,10 +138,13 @@ export default function HomeScreen({ navigation }: Props) {
   }, [alertConfig, fabExpanded, selectedTaskForStatus, isReorderMode, navigation]);
 
   // Auto-transition engine: check clock every 30 seconds for scheduled tasks
+  const tracksRef = useRef(tracks);
+  tracksRef.current = tracks;
+
   useEffect(() => {
     const checkScheduledTransitions = () => {
       const now = new Date();
-      tracks.forEach((t) => {
+      tracksRef.current.forEach((t) => {
         if (t.taskType === 'allocated' && t.allocatedStartTime) {
           const start = new Date(t.allocatedStartTime);
           // If task is in 'time-allocated' and current time has reached start time -> auto transition to 'in-progress'
@@ -155,7 +158,7 @@ export default function HomeScreen({ navigation }: Props) {
     checkScheduledTransitions();
     const interval = setInterval(checkScheduledTransitions, 30000);
     return () => clearInterval(interval);
-  }, [tracks, updateTrack]);
+  }, [updateTrack]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -285,7 +288,7 @@ export default function HomeScreen({ navigation }: Props) {
     }
   };
 
-  const s = makeStyles(colors);
+  const s = useMemo(() => makeStyles(colors), [colors]);
 
   return (
     <SafeAreaView edges={['top']}>

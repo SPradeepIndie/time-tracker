@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity,
 } from 'react-native';
@@ -47,7 +47,7 @@ export default function AnalyticsScreen({ navigation }: Props) {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const s = makeStyles(colors);
+  const s = useMemo(() => makeStyles(colors), [colors]);
 
   // ── Gauge component ─────────────────────────────────────────────────────────
 

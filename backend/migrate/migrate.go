@@ -183,6 +183,52 @@ func Migrate(db *sql.DB) (error, string) {
 			-- Add position column for drag-and-drop custom ordering of tasks
 			ALTER TABLE tracker ADD COLUMN IF NOT EXISTS position INTEGER NOT NULL DEFAULT 0;`,
 		},
+		{
+			name: "v7_performance_indexes",
+			sql: `
+			-- Performance indexes on frequently filtered and joined columns
+			CREATE INDEX IF NOT EXISTS idx_tracker_status_type ON tracker(status, task_type);
+			CREATE INDEX IF NOT EXISTS idx_tracker_created_at ON tracker(created_at);
+			CREATE INDEX IF NOT EXISTS idx_tags_track_id ON tags(track_id);
+			CREATE INDEX IF NOT EXISTS idx_daily_goals_date ON daily_goals(date);
+			CREATE INDEX IF NOT EXISTS idx_weekly_goals_week_cat ON weekly_goals(week_label, category_id);
+			CREATE INDEX IF NOT EXISTS idx_routine_subs_routine_id ON routine_sub_activities(routine_id);
+			CREATE INDEX IF NOT EXISTS idx_routine_reminders_routine_id ON routine_reminders(routine_id);
+			CREATE INDEX IF NOT EXISTS idx_routine_logs_routine_date ON routine_activity_logs(routine_id, date);`,
+		},
+		{
+			name: "v8_checklists_and_sticky_notes",
+			sql: `
+			-- Checklists table (max 5 lists)
+			CREATE TABLE IF NOT EXISTS checklists (
+				id         VARCHAR(64) PRIMARY KEY,
+				title      TEXT NOT NULL,
+				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+			);
+
+			-- Checklist items table (max 30 items per list)
+			CREATE TABLE IF NOT EXISTS checklist_items (
+				id           VARCHAR(64) PRIMARY KEY,
+				list_id      VARCHAR(64) NOT NULL REFERENCES checklists(id) ON DELETE CASCADE,
+				text         TEXT NOT NULL,
+				is_completed BOOLEAN NOT NULL DEFAULT FALSE,
+				position     INTEGER NOT NULL DEFAULT 0,
+				created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				updated_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+			);
+			CREATE INDEX IF NOT EXISTS idx_checklist_items_list_id ON checklist_items(list_id);
+
+			-- Sticky notes table (max 10 notes, max 255 chars)
+			CREATE TABLE IF NOT EXISTS sticky_notes (
+				id         VARCHAR(64) PRIMARY KEY,
+				content    VARCHAR(255) NOT NULL,
+				color      VARCHAR(32) NOT NULL,
+				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+			);
+			CREATE INDEX IF NOT EXISTS idx_sticky_notes_created_at ON sticky_notes(created_at);`,
+		},
 	}
 
 	for _, m := range migrations {

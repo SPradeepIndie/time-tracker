@@ -16,6 +16,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   ReactNode,
 } from 'react';
 import * as SecureStore from 'expo-secure-store';
@@ -200,21 +201,35 @@ export const SyncProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [syncEnabled, canEnableSync, runBidirectionalSync]);
 
+  const value = useMemo(
+    () => ({
+      syncEnabled,
+      backendUrl,
+      syncStatus,
+      syncError,
+      isInsecure,
+      canEnableSync,
+      disabledReason,
+      setSyncEnabled,
+      setBackendUrl,
+      triggerSync,
+    }),
+    [
+      syncEnabled,
+      backendUrl,
+      syncStatus,
+      syncError,
+      isInsecure,
+      canEnableSync,
+      disabledReason,
+      setSyncEnabled,
+      setBackendUrl,
+      triggerSync,
+    ]
+  );
+
   return (
-    <SyncContext.Provider
-      value={{
-        syncEnabled,
-        backendUrl,
-        syncStatus,
-        syncError,
-        isInsecure,
-        canEnableSync,
-        disabledReason,
-        setSyncEnabled,
-        setBackendUrl,
-        triggerSync,
-      }}
-    >
+    <SyncContext.Provider value={value}>
       {children}
     </SyncContext.Provider>
   );

@@ -7,7 +7,7 @@
  *  - Security: Change PIN & reset options
  *  - About: App Information link (housing Dark Mode toggle)
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import * as LocalAuthentication from 'expo-local-authentication';
 import { useTheme } from '../../context/ThemeContext';
 import { useSyncContext } from '../../context/SyncContext';
 import { SettingsScreenNavigationProp } from '../../navigation/types';
@@ -29,6 +30,7 @@ import { AppIcon } from '../../components/ui/AppIcon';
 import SyncStatusBadge from '../../components/sync/SyncStatusBadge';
 import { useTrackContext } from '../../context/TrackContext';
 import { getStorageStats, formatBytes, StorageDetailStats } from '../../services/storage/db';
+import { PIN_HASH_KEY, PIN_SALT_KEY } from '../../services/storage/encryption';
 import {
   AnalyticsWeights,
   loadAnalyticsWeights,
@@ -39,8 +41,6 @@ import {
 interface Props {
   navigation: SettingsScreenNavigationProp;
 }
-
-const PIN_HASH_KEY = 'app_pin_hash';
 
 export default function SettingsScreen({ navigation }: Props) {
   const { colors, isDark, toggleTheme } = useTheme();
@@ -87,18 +87,34 @@ export default function SettingsScreen({ navigation }: Props) {
     }
   };
 
-  const handleChangePin = () => {
+  const handleChangePin = async () => {
+    // Require biometric verification before changing PIN if device supports it
+    const hasHardware = await LocalAuthentication.hasHardwareAsync();
+    const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+
+    if (hasHardware && isEnrolled) {
+      const bioResult = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Verify identity to change PIN',
+        cancelLabel: 'Cancel',
+      });
+      if (!bioResult.success) {
+        Alert.alert('Verification Required', 'You must verify your identity to change your PIN.');
+        return;
+      }
+    }
+
     Alert.alert(
       'Change PIN',
-      'This will clear your current PIN. You will need to set a new one on next launch.',
+      'This will clear your current PIN and let you set a new one now.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Reset PIN',
-          style: 'destructive',
+          text: 'Set New PIN',
+          style: 'default',
           onPress: async () => {
             await SecureStore.deleteItemAsync(PIN_HASH_KEY);
-            Alert.alert('PIN cleared', 'A new PIN will be required next time you open the app.');
+            await SecureStore.deleteItemAsync(PIN_SALT_KEY);
+            navigation.replace('PinSetup');
           },
         },
       ]
@@ -145,6 +161,7 @@ export default function SettingsScreen({ navigation }: Props) {
                     try {
                       await clearAllData(true);
                       await SecureStore.deleteItemAsync(PIN_HASH_KEY);
+                      await SecureStore.deleteItemAsync(PIN_SALT_KEY);
                       await SecureStore.deleteItemAsync('time_tracker_db_key');
                       await SecureStore.deleteItemAsync('backend_url');
                       await SecureStore.deleteItemAsync('sync_enabled');
@@ -247,7 +264,7 @@ export default function SettingsScreen({ navigation }: Props) {
     await SecureStore.setItemAsync('task_sort_order', sortOrder);
   };
 
-  const s = makeStyles(colors);
+  const s = useMemo(() => makeStyles(colors), [colors]);
 
   return (
     <SafeAreaView edges={['top']}>
@@ -437,6 +454,16 @@ export default function SettingsScreen({ navigation }: Props) {
                 <Text style={s.rowDesc}>Defined routines / daily logs</Text>
               </View>
               <Text style={s.statBadge}>{storageStats.routineCount} / {storageStats.routineLogCount} logs</Text>
+            </View>
+            <View style={s.divider} />
+            <View style={s.row}>
+              <View style={s.rowLeft}>
+                <Text style={s.rowLabel}>Checklists & Sticky Notes</Text>
+                <Text style={s.rowDesc}>Simple lists / colored sticky notes</Text>
+              </View>
+              <Text style={s.statBadge}>
+                {storageStats.checklistCount ?? 0} lists / {storageStats.stickyNoteCount ?? 0} notes
+              </Text>
             </View>
             <View style={s.divider} />
             <View style={[s.row, s.rowLast]}>

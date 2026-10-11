@@ -5,7 +5,7 @@
  * User enters a 4-digit PIN twice to confirm, then it's stored as a SHA-256 hash
  * in expo-secure-store (hardware-backed; never stored as plaintext).
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,12 +14,16 @@ import {
   Vibration,
 } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import * as Crypto from 'expo-crypto';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../types/Track';
 import { useTheme } from '../../context/ThemeContext';
+import {
+  hashPinWithSalt,
+  generatePinSalt,
+  PIN_HASH_KEY,
+  PIN_SALT_KEY,
+} from '../../services/storage/encryption';
 
-const PIN_HASH_KEY = 'app_pin_hash';
 const PIN_LENGTH = 4;
 
 type Props = {
@@ -28,10 +32,6 @@ type Props = {
 
 type Step = 'create' | 'confirm';
 
-async function hashPin(pin: string): Promise<string> {
-  return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, pin);
-}
-
 export default function PinSetupScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const [step, setStep] = useState<Step>('create');
@@ -39,7 +39,7 @@ export default function PinSetupScreen({ navigation }: Props) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
 
-  const s = makeStyles(colors);
+  const s = useMemo(() => makeStyles(colors), [colors]);
 
   const handleKey = useCallback(async (key: string) => {
     if (key === '⌫') {
@@ -62,7 +62,11 @@ export default function PinSetupScreen({ navigation }: Props) {
 
     // Confirm step
     if (next === firstPin) {
-      const hash = await hashPin(next);
+      const salt = await generatePinSalt();
+      const hash = await hashPinWithSalt(next, salt);
+      await SecureStore.setItemAsync(PIN_SALT_KEY, salt, {
+        keychainAccessible: SecureStore.WHEN_UNLOCKED,
+      });
       await SecureStore.setItemAsync(PIN_HASH_KEY, hash, {
         keychainAccessible: SecureStore.WHEN_UNLOCKED,
       });

@@ -103,3 +103,71 @@ For the Build-Tools:
 ```
 *(Check your build logs for the exact version numbers it requires).*
 Once installed, run `npx expo run:android` again and Gradle will instantly skip the download.
+
+---
+
+## 6. Run the Debug App via ADB
+
+When running or testing an installed Debug APK on a connected device, React Native requires the Metro bundler to serve the JavaScript bundle. Follow these steps to connect and launch:
+
+### Step 1: Start the Metro Bundler
+Start the development server in your terminal:
+```bash
+cd mobile-app
+npx expo start
+```
+
+### Step 2: Forward the Port over USB
+Ensure your phone is plugged in with USB debugging enabled (`adb devices`) and forward port 8081:
+```bash
+adb reverse tcp:8081 tcp:8081
+```
+
+### Step 3: Launch the App via ADB
+Launch the application directly:
+```bash
+adb shell am start -n com.sanjayapradeep.timetracker/.MainActivity
+```
+*(Note: If launching an older build that still uses the previous package name, use `adb shell am start -n com.anonymous.mobileapp/.MainActivity`).*
+
+---
+
+## 7. Build and Install Standalone Release APKs
+
+A Release APK packages the offline JavaScript code directly into the APK so it runs standalone without requiring the Metro bundler.
+
+### Step 1: Build the Release APK
+```bash
+cd mobile-app/android
+./gradlew assembleRelease
+```
+
+### Step 2: Choose the Correct Architecture (ABI) APK
+Gradle may generate split APKs per architecture inside `app/build/outputs/apk/release/`:
+
+| APK File | Architecture | What It's For |
+| :--- | :--- | :--- |
+| **`app-arm64-v8a-release.apk`** | **64-bit ARM** | **Physical Android smartphones (Samsung, Xiaomi, Pixel, OnePlus, etc.). Use this!** |
+| `app-armeabi-v7a-release.apk` | 32-bit ARM | Older legacy 32-bit phones. |
+| `app-x86_64-release.apk` | 64-bit x86 | Android Studio Emulators on PC / Mac. |
+| `app-universal-release.apk` *(or `app-release.apk`)* | Universal | All architectures (larger file size). |
+
+> **Verify device architecture:** Run `adb shell getprop ro.product.cpu.abi` (modern phones output `arm64-v8a`).
+
+### Step 3: Install via ADB
+From `mobile-app/android`:
+```bash
+# For physical phones:
+adb install -r app/build/outputs/apk/release/app-arm64-v8a-release.apk
+
+# Or if an un-split universal APK was generated:
+adb install -r app/build/outputs/apk/release/app-release.apk
+```
+*(Or from the repository root, prepend `mobile-app/android/`).*
+
+> **Tip:** The `-r` flag reinstalls / updates the existing app while preserving local database data.
+
+### Step 4: Launch via ADB
+```bash
+adb shell am start -n com.sanjayapradeep.timetracker/.MainActivity
+```

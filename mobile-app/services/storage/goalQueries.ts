@@ -13,6 +13,7 @@ import {
   MAX_CHILDREN_PER_TIER,
   MAX_TIERS,
 } from '../../types/Goal';
+import { getOrCreateEncryptionKey, encrypt, decrypt } from './encryption';
 
 // ── Row types ─────────────────────────────────────────────────────────────────
 
@@ -56,13 +57,13 @@ interface WeeklyGoalRow {
 
 // ── Converters ────────────────────────────────────────────────────────────────
 
-function rowToDailyGoal(row: DailyGoalRow): DailyGoal {
+async function rowToDailyGoal(row: DailyGoalRow, key: string): Promise<DailyGoal> {
   const status = (row.status as GoalStatus) || (row.is_completed === 1 ? 'completed' : 'pending');
   return {
     id: row.id,
     remoteId: row.remote_id ?? undefined,
     date: row.date,
-    text: row.text,
+    text: await decrypt(row.text, key),
     status,
     isCompleted: status === 'completed' || status === 'completed_overdue',
     position: row.position,
@@ -84,7 +85,7 @@ function rowToCategory(row: CategoryRow): WeeklyGoalCategory {
   };
 }
 
-function rowToWeeklyGoal(row: WeeklyGoalRow): WeeklyGoal {
+async function rowToWeeklyGoal(row: WeeklyGoalRow, key: string): Promise<WeeklyGoal> {
   const status = (row.status as GoalStatus) || (row.is_completed === 1 ? 'completed' : 'pending');
   return {
     id: row.id,
@@ -93,7 +94,7 @@ function rowToWeeklyGoal(row: WeeklyGoalRow): WeeklyGoal {
     categoryId: row.category_id,
     parentId: row.parent_id,
     tier: row.tier as 1 | 2 | 3,
-    text: row.text,
+    text: await decrypt(row.text, key),
     status,
     isCompleted: status === 'completed' || status === 'completed_overdue',
     position: row.position,
@@ -110,11 +111,12 @@ export async function queryGetDailyGoalsByDate(
   db: SQLiteDatabase,
   date: string
 ): Promise<DailyGoal[]> {
+  const key = await getOrCreateEncryptionKey();
   const rows = await db.getAllAsync<DailyGoalRow>(
     'SELECT * FROM daily_goals WHERE date = ? ORDER BY position ASC;',
     [date]
   );
-  return rows.map(rowToDailyGoal);
+  return Promise.all(rows.map((r) => rowToDailyGoal(r, key)));
 }
 
 /**
@@ -124,13 +126,14 @@ export async function queryGetActiveDailyGoals(
   db: SQLiteDatabase,
   today: string
 ): Promise<DailyGoal[]> {
+  const key = await getOrCreateEncryptionKey();
   const rows = await db.getAllAsync<DailyGoalRow>(
     `SELECT * FROM daily_goals
      WHERE date = ? OR (status = 'overdue' AND date < ?)
      ORDER BY CASE WHEN status = 'overdue' THEN 0 ELSE 1 END, position ASC;`,
     [today, today]
   );
-  return rows.map(rowToDailyGoal);
+  return Promise.all(rows.map((r) => rowToDailyGoal(r, key)));
 }
 
 /**
@@ -158,11 +161,13 @@ export async function queryCreateDailyGoal(
   if (existing.length >= MAX_DAILY_GOALS) {
     throw new Error(`Maximum of ${MAX_DAILY_GOALS} goals per day reached.`);
   }
+  const key = await getOrCreateEncryptionKey();
+  const encText = await encrypt(goal.text, key);
   const now = new Date().toISOString();
   await db.runAsync(
     `INSERT INTO daily_goals (id, remote_id, date, text, status, is_completed, position, created_at, updated_at)
      VALUES (?, ?, ?, ?, 'pending', 0, ?, ?, ?);`,
-    [goal.id, goal.remoteId ?? null, goal.date, goal.text, goal.position, now, now]
+    [goal.id, goal.remoteId ?? null, goal.date, encText, goal.position, now, now]
   );
   return { ...goal, status: 'pending', isCompleted: false, createdAt: new Date(now), updatedAt: new Date(now) };
 }
@@ -206,9 +211,11 @@ export async function queryUpdateDailyGoalText(
   id: string,
   text: string
 ): Promise<void> {
+  const key = await getOrCreateEncryptionKey();
+  const encText = await encrypt(text, key);
   await db.runAsync(
     'UPDATE daily_goals SET text=?, updated_at=? WHERE id=?;',
-    [text, new Date().toISOString(), id]
+    [encText, new Date().toISOString(), id]
   );
 }
 
@@ -269,11 +276,12 @@ export async function queryGetWeeklyGoalsByWeek(
   db: SQLiteDatabase,
   weekLabel: string
 ): Promise<WeeklyGoal[]> {
+  const key = await getOrCreateEncryptionKey();
   const rows = await db.getAllAsync<WeeklyGoalRow>(
     'SELECT * FROM weekly_goals WHERE week_label = ? ORDER BY tier ASC, position ASC;',
     [weekLabel]
   );
-  return rows.map(rowToWeeklyGoal);
+  return Promise.all(rows.map((r) => rowToWeeklyGoal(r, key)));
 }
 
 /**
@@ -283,13 +291,14 @@ export async function queryGetActiveWeeklyGoals(
   db: SQLiteDatabase,
   currentWeek: string
 ): Promise<WeeklyGoal[]> {
+  const key = await getOrCreateEncryptionKey();
   const rows = await db.getAllAsync<WeeklyGoalRow>(
     `SELECT * FROM weekly_goals
      WHERE week_label = ? OR (status = 'overdue' AND week_label < ?)
      ORDER BY CASE WHEN status = 'overdue' THEN 0 ELSE 1 END, tier ASC, position ASC;`,
     [currentWeek, currentWeek]
   );
-  return rows.map(rowToWeeklyGoal);
+  return Promise.all(rows.map((r) => rowToWeeklyGoal(r, key)));
 }
 
 /**
@@ -323,6 +332,8 @@ export async function queryCreateWeeklyGoal(
       throw new Error(`Maximum of ${MAX_CHILDREN_PER_TIER} child items per goal reached.`);
     }
   }
+  const key = await getOrCreateEncryptionKey();
+  const encText = await encrypt(goal.text, key);
   const now = new Date().toISOString();
   await db.runAsync(
     `INSERT INTO weekly_goals
@@ -330,7 +341,7 @@ export async function queryCreateWeeklyGoal(
      VALUES (?,?,?,?,?,?,?, 'pending', 0,?,?,?);`,
     [
       goal.id, goal.remoteId ?? null, goal.weekLabel, goal.categoryId,
-      goal.parentId, goal.tier, goal.text, goal.position, now, now,
+      goal.parentId, goal.tier, encText, goal.position, now, now,
     ]
   );
   return { ...goal, status: 'pending', isCompleted: false, createdAt: new Date(now), updatedAt: new Date(now) };
@@ -375,9 +386,11 @@ export async function queryUpdateWeeklyGoalText(
   id: string,
   text: string
 ): Promise<void> {
+  const key = await getOrCreateEncryptionKey();
+  const encText = await encrypt(text, key);
   await db.runAsync(
     'UPDATE weekly_goals SET text=?, updated_at=? WHERE id=?;',
-    [text, new Date().toISOString(), id]
+    [encText, new Date().toISOString(), id]
   );
 }
 

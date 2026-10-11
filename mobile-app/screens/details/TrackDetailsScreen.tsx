@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -26,7 +26,7 @@ export default function TrackDetailsScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
 
   const track = getTrackById(id);
-  const styles = makeStyles(colors);
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   if (!track) {
     return (

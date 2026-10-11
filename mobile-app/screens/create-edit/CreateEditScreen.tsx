@@ -10,7 +10,7 @@
  *      2. Start Time - Duration
  *      3. Duration only (implicitly Start Time = now)
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -376,7 +376,7 @@ export default function CreateEditScreen({ navigation, route }: Props) {
     }
   };
 
-  const s = makeStyles(colors);
+  const s = useMemo(() => makeStyles(colors), [colors]);
 
   return (
     <SafeAreaView edges={['bottom']} style={{ flex: 1 }}>

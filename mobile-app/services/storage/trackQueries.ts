@@ -71,14 +71,27 @@ async function getTagsForTrack(db: SQLiteDatabase, trackId: string): Promise<str
 // ── Queries ───────────────────────────────────────────────────────────────────
 
 export async function queryGetAll(db: SQLiteDatabase, key: string): Promise<Track[]> {
-  const rows = await db.getAllAsync<TrackRow>(
-    'SELECT * FROM tracks ORDER BY position ASC, updated_at DESC;'
-  );
+  const [rows, tagRows] = await Promise.all([
+    db.getAllAsync<TrackRow>(
+      'SELECT * FROM tracks ORDER BY position ASC, updated_at DESC;'
+    ),
+    db.getAllAsync<{ track_id: string; name: string }>(
+      'SELECT track_id, name FROM tags ORDER BY id ASC;'
+    ),
+  ]);
+
+  const tagMap = new Map<string, string[]>();
+  for (const t of tagRows) {
+    let list = tagMap.get(t.track_id);
+    if (!list) {
+      list = [];
+      tagMap.set(t.track_id, list);
+    }
+    list.push(t.name);
+  }
+
   return Promise.all(
-    rows.map(async (row) => {
-      const tags = await getTagsForTrack(db, row.id);
-      return rowToTrack(row, tags, key);
-    })
+    rows.map((row) => rowToTrack(row, tagMap.get(row.id) ?? [], key))
   );
 }
 
@@ -258,9 +271,9 @@ export async function queryUpdateStatus(
 }
 
 /** Returns all allocated (in-progress) tasks whose end time has passed — used to trigger completion notifications */
-export async function queryGetExpiredAllocatedTasks(db: SQLiteDatabase): Promise<{ id: string; allocated_end_time: string; title: string }[]> {
+export async function queryGetExpiredAllocatedTasks(db: SQLiteDatabase, key?: string): Promise<{ id: string; allocated_end_time: string; title: string }[]> {
   const now = new Date().toISOString();
-  return db.getAllAsync<{ id: string; allocated_end_time: string; title: string }>(
+  const rows = await db.getAllAsync<{ id: string; allocated_end_time: string; title: string }>(
     `SELECT id, allocated_end_time, title FROM tracks
      WHERE task_type = 'allocated'
        AND status = 'in-progress'
@@ -268,12 +281,14 @@ export async function queryGetExpiredAllocatedTasks(db: SQLiteDatabase): Promise
        AND allocated_end_time <= ?;`,
     [now]
   );
+  if (!key) return rows;
+  return Promise.all(rows.map(async (r) => ({ ...r, title: await decrypt(r.title, key) })));
 }
 
 /** Returns all allocated tasks that should now transition to in-progress */
-export async function queryGetDueAllocatedTasks(db: SQLiteDatabase): Promise<{ id: string; allocated_start_time: string; title: string }[]> {
+export async function queryGetDueAllocatedTasks(db: SQLiteDatabase, key?: string): Promise<{ id: string; allocated_start_time: string; title: string }[]> {
   const now = new Date().toISOString();
-  return db.getAllAsync<{ id: string; allocated_start_time: string; title: string }>(
+  const rows = await db.getAllAsync<{ id: string; allocated_start_time: string; title: string }>(
     `SELECT id, allocated_start_time, title FROM tracks
      WHERE task_type = 'allocated'
        AND status = 'time-allocated'
@@ -281,4 +296,6 @@ export async function queryGetDueAllocatedTasks(db: SQLiteDatabase): Promise<{ i
        AND allocated_start_time <= ?;`,
     [now]
   );
+  if (!key) return rows;
+  return Promise.all(rows.map(async (r) => ({ ...r, title: await decrypt(r.title, key) })));
 }

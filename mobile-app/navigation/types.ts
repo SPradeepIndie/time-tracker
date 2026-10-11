@@ -16,11 +16,17 @@ export type MainTabParamList = {
   Tasks: undefined;
   Goals: undefined;
   Routines: undefined;
+  Lists: undefined;
   Analytics: undefined;
   Settings: undefined;
 };
 
 // ── Composite nav prop types ────────────────────────────────────────────────
+
+export type ListsScreenNavigationProp = CompositeNavigationProp<
+  BottomTabNavigationProp<MainTabParamList, 'Lists'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
 
 export type TasksScreenNavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'Tasks'>,

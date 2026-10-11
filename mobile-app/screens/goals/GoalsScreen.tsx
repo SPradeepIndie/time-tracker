@@ -3,7 +3,7 @@
  *
  * Segmented view for Daily Goals (Tomorrow's Plan) and Weekly Goals (3-tier hierarchy).
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, Alert, Modal, FlatList, ActivityIndicator,
@@ -70,7 +70,7 @@ export default function GoalsScreen({ navigation }: Props) {
   const tomorrow = getTomorrowDateString();
   const today = getTodayDateString();
 
-  const s = makeStyles(colors);
+  const s = useMemo(() => makeStyles(colors), [colors]);
 
   // ── Daily Goal Submission ─────────────────────────────────────────────────
 
