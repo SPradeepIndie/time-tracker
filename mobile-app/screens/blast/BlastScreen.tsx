@@ -9,7 +9,7 @@
  *  - Task detail capture (title, description, priority, tags)
  *  - Direct persistence into SQLite tracks table via TrackContext
  */
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -30,9 +30,7 @@ import { ThemedAlert, ThemedAlertProps } from '../../components/ui';
 import { useTheme } from '../../context/ThemeContext';
 import { useTrackContext } from '../../context/TrackContext';
 import { PREDEFINED_TAGS, TaskStatus } from '../../types/Track';
-
-type BlastMode = 'stopwatch' | 'timer';
-type SessionState = 'idle' | 'running' | 'paused';
+import { useBlastContext } from '../../context/BlastContext';
 
 const TIMER_PRESETS = [
   { label: '15 min', minutes: 15 },
@@ -66,19 +64,26 @@ export default function BlastScreen() {
     }
   };
 
-  // Mode & Timer State
-  const [mode, setMode] = useState<BlastMode>('stopwatch');
-  const [sessionState, setSessionState] = useState<SessionState>('idle');
-  const [stopwatchSeconds, setStopwatchSeconds] = useState(0);
-  const [timerDurationMinutes, setTimerDurationMinutes] = useState(25);
-  const [timerRemainingSeconds, setTimerRemainingSeconds] = useState(25 * 60);
+  const {
+    mode,
+    setMode,
+    sessionState,
+    stopwatchSeconds,
+    timerRemainingSeconds,
+    timerDurationMinutes,
+    sessionStartTime,
+    sessionEndTime,
+    showCompletionModal,
+    setShowCompletionModal,
+    startSession,
+    pauseSession,
+    resumeSession,
+    resetSession,
+    completeSession,
+    selectPreset,
+  } = useBlastContext();
 
-  // Session Timing Timestamps
-  const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
-  const [sessionEndTime, setSessionEndTime] = useState<Date | null>(null);
-
-  // Completion Sheet / Modal
-  const [showCompletionModal, setShowCompletionModal] = useState(false);
+  // Completion Sheet Task Inputs
   const [isTaskCompleted, setIsTaskCompleted] = useState<boolean>(true);
   const [taskTitle, setTaskTitle] = useState('');
   const [taskDescription, setTaskDescription] = useState('');
@@ -89,80 +94,13 @@ export default function BlastScreen() {
   // Alert Modal State
   const [alertConfig, setAlertConfig] = useState<ThemedAlertProps | null>(null);
 
-  // Interval reference
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Unified timer/stopwatch interval
-  useEffect(() => {
-    if (sessionState !== 'running') {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      return;
-    }
-
-    if (mode === 'stopwatch') {
-      intervalRef.current = setInterval(() => {
-        setStopwatchSeconds((prev) => prev + 1);
-      }, 1000);
-    } else if (mode === 'timer') {
-      intervalRef.current = setInterval(() => {
-        setTimerRemainingSeconds((prev) => {
-          if (prev <= 1) {
-            clearInterval(intervalRef.current!);
-            intervalRef.current = null;
-            handleFinishSession();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [mode, sessionState]);
-
   // Handlers
-  const handleStart = () => {
-    if (!sessionStartTime) {
-      setSessionStartTime(new Date());
-    }
-    setSessionState('running');
-  };
-
-  const handlePause = () => {
-    setSessionState('paused');
-  };
-
-  const handleResume = () => {
-    setSessionState('running');
-  };
-
-  const handleReset = () => {
-    setSessionState('idle');
-    setStopwatchSeconds(0);
-    setTimerRemainingSeconds(timerDurationMinutes * 60);
-    setSessionStartTime(null);
-    setSessionEndTime(null);
-  };
-
-  const handleSelectPreset = (minutes: number) => {
-    if (sessionState !== 'idle') return;
-    setTimerDurationMinutes(minutes);
-    setTimerRemainingSeconds(minutes * 60);
-  };
-
-  const handleFinishSession = () => {
-    setSessionState('paused');
-    setSessionEndTime(new Date());
-    setShowCompletionModal(true);
-  };
+  const handleStart = startSession;
+  const handlePause = pauseSession;
+  const handleResume = resumeSession;
+  const handleReset = resetSession;
+  const handleSelectPreset = selectPreset;
+  const handleFinishSession = completeSession;
 
   const calculateElapsedMinutes = (): number => {
     if (mode === 'stopwatch') {
@@ -227,6 +165,7 @@ export default function BlastScreen() {
         blockMultiplier: Math.max(1, Math.round(duration / 45)),
       });
 
+      resetSession();
       setShowCompletionModal(false);
       const msg = `Blast session recorded: ${trimmedTitle}`;
       if (Platform.OS === 'android') {
@@ -259,6 +198,7 @@ export default function BlastScreen() {
           text: 'Discard',
           style: 'destructive',
           onPress: () => {
+            resetSession();
             setShowCompletionModal(false);
             safeGoBack();
           },

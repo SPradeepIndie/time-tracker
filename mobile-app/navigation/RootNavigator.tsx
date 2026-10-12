@@ -8,9 +8,9 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { createNavigationContainerRef } from '@react-navigation/native';
 import * as SecureStore from 'expo-secure-store';
 import { RootStackParamList } from './types';
+import { navigationRef } from './navigationRef';
 import { useTheme } from '../context/ThemeContext';
 import { TabNavigator } from './TabNavigator';
 import TrackDetailsScreen from '../screens/details/TrackDetailsScreen';
@@ -24,7 +24,7 @@ const PIN_HASH_KEY = 'app_pin_hash';
 const AUTO_LOCK_THRESHOLD_MS = 30000; // 30 seconds background timeout
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-export const navigationRef = createNavigationContainerRef<RootStackParamList>();
+export { navigationRef };
 
 export const RootNavigator: React.FC = () => {
   const { colors } = useTheme();
