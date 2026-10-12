@@ -70,6 +70,7 @@ const NOTIF_IDS = {
   GOAL_VERIFY_9AM: 'daily-goal-verify-9am',
   GOAL_VERIFY_4PM: 'daily-goal-verify-4pm',
   ROUTINE_REMINDER_PREFIX: 'routine-reminder-',       // + reminder id
+  BLAST_TIMER_COMPLETION: 'blast-timer-completion',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -410,6 +411,46 @@ export async function cancelRoutineReminder(reminderId: string): Promise<void> {
     ).catch(() => {});
   } catch (error) {
     console.warn('[NotificationService] cancelRoutineReminder error:', error);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Blast Session Timer Completion Alert
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function scheduleBlastTimerCompletion(secondsFromNow: number): Promise<void> {
+  const Notifications = getNotifications();
+  if (!Notifications || secondsFromNow <= 0) return;
+
+  try {
+    await Notifications.cancelScheduledNotificationAsync(NOTIF_IDS.BLAST_TIMER_COMPLETION).catch(() => {});
+    await Notifications.scheduleNotificationAsync({
+      identifier: NOTIF_IDS.BLAST_TIMER_COMPLETION,
+      content: {
+        title: '⚡ Blast Session Complete!',
+        body: 'Your countdown timer has finished. Tap to record your task.',
+        sound: true,
+        data: { type: 'blast-timer' },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: Math.max(1, Math.round(secondsFromNow)),
+        repeats: false,
+      },
+    });
+  } catch (error) {
+    console.warn('[NotificationService] scheduleBlastTimerCompletion error:', error);
+  }
+}
+
+export async function cancelBlastTimerCompletion(): Promise<void> {
+  const Notifications = getNotifications();
+  if (!Notifications) return;
+
+  try {
+    await Notifications.cancelScheduledNotificationAsync(NOTIF_IDS.BLAST_TIMER_COMPLETION).catch(() => {});
+  } catch (error) {
+    console.warn('[NotificationService] cancelBlastTimerCompletion error:', error);
   }
 }
 
