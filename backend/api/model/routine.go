@@ -12,6 +12,8 @@ type Routine struct {
 	Description string    `json:"description,omitempty" db:"description"`
 	Color       string    `json:"color" db:"color"`       // Hex color
 	Position    int       `json:"position" db:"position"`
+	Frequency   string    `json:"frequency" db:"frequency"` // "daily" | "weekly"
+	DaysOfWeek  string    `json:"days_of_week" db:"days_of_week"` // JSON array string e.g. "[0, 3]"
 	IsActive    bool      `json:"is_active" db:"is_active"` // Soft delete flag
 	CreatedAt   time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
@@ -22,6 +24,8 @@ type CreateRoutineRequest struct {
 	Description string `json:"description,omitempty"`
 	Color       string `json:"color,omitempty"`
 	Position    int    `json:"position,omitempty"`
+	Frequency   string `json:"frequency,omitempty"`
+	DaysOfWeek  string `json:"days_of_week,omitempty"`
 }
 
 type UpdateRoutineRequest struct {
@@ -29,6 +33,8 @@ type UpdateRoutineRequest struct {
 	Description *string `json:"description,omitempty"`
 	Color       *string `json:"color,omitempty"`
 	Position    *int    `json:"position,omitempty"`
+	Frequency   *string `json:"frequency,omitempty"`
+	DaysOfWeek  *string `json:"days_of_week,omitempty"`
 }
 
 // ─── Sub-Activity ─────────────────────────────────────────────────────────────

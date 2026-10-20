@@ -99,6 +99,8 @@ func Migrate(db *sql.DB) (error, string) {
 				description TEXT    DEFAULT '',
 				color       TEXT    NOT NULL DEFAULT '#7C3AED',
 				position    INTEGER NOT NULL DEFAULT 0,
+				frequency   VARCHAR(20) NOT NULL DEFAULT 'daily',
+				days_of_week TEXT DEFAULT '[]',
 				is_active   BOOLEAN NOT NULL DEFAULT TRUE,
 				created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 				updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -165,7 +167,28 @@ func Migrate(db *sql.DB) (error, string) {
 				updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 			);
 
-			-- 13. Performance Indexes
+			-- 13. habits
+			CREATE TABLE IF NOT EXISTS habits (
+				id         SERIAL PRIMARY KEY,
+				name       TEXT NOT NULL,
+				color      VARCHAR(32) NOT NULL DEFAULT '#7C3AED',
+				position   INTEGER NOT NULL DEFAULT 0,
+				is_active  BOOLEAN NOT NULL DEFAULT TRUE,
+				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+			);
+
+			-- 14. habit_logs
+			CREATE TABLE IF NOT EXISTS habit_logs (
+				id           SERIAL PRIMARY KEY,
+				habit_id     INTEGER NOT NULL REFERENCES habits(id) ON DELETE CASCADE,
+				date         DATE NOT NULL,
+				is_completed BOOLEAN NOT NULL DEFAULT FALSE,
+				created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				UNIQUE(habit_id, date)
+			);
+
+			-- 15. Performance Indexes
 			CREATE INDEX IF NOT EXISTS idx_tracker_status_type ON tracker(status, task_type);
 			CREATE INDEX IF NOT EXISTS idx_tracker_created_at ON tracker(created_at);
 			CREATE INDEX IF NOT EXISTS idx_tags_track_id ON tags(track_id);
@@ -178,6 +201,8 @@ func Migrate(db *sql.DB) (error, string) {
 			CREATE INDEX IF NOT EXISTS idx_routine_logs_routine_date ON routine_activity_logs(routine_id, date);
 			CREATE INDEX IF NOT EXISTS idx_checklist_items_list_id ON checklist_items(list_id);
 			CREATE INDEX IF NOT EXISTS idx_sticky_notes_created_at ON sticky_notes(created_at);
+			CREATE INDEX IF NOT EXISTS idx_habits_active ON habits(is_active);
+			CREATE INDEX IF NOT EXISTS idx_habit_logs_date ON habit_logs(date);
 			`,
 		},
 	}

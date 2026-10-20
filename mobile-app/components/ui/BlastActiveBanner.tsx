@@ -43,14 +43,15 @@ export const BlastActiveBanner: React.FC<Props> = ({ currentRouteName }) => {
     resumeSession,
   } = useBlastContext();
 
-  // Hide if idle, completed, or already viewing BlastScreen
+  // Hide if idle or already viewing BlastScreen
   if (currentRouteName === 'Blast') return null;
-  if (sessionState !== 'running' && sessionState !== 'paused') return null;
+  if (sessionState === 'idle') return null;
 
   const isRunning = sessionState === 'running';
-  const displayTime = formatDisplayTime(
-    mode === 'stopwatch' ? stopwatchSeconds : timerRemainingSeconds
-  );
+  const isCompleted = sessionState === 'completed';
+  const displayTime = isCompleted
+    ? '00:00'
+    : formatDisplayTime(mode === 'stopwatch' ? stopwatchSeconds : timerRemainingSeconds);
 
   const handleOpenBlast = () => {
     if (navigationRef.isReady()) {
@@ -89,16 +90,16 @@ export const BlastActiveBanner: React.FC<Props> = ({ currentRouteName }) => {
             <View
               style={[
                 s.statusBadge,
-                isRunning ? s.statusBadgeRunning : s.statusBadgePaused,
+                isRunning || isCompleted ? s.statusBadgeRunning : s.statusBadgePaused,
               ]}
             >
               <Text
                 style={[
                   s.statusText,
-                  isRunning ? s.statusTextRunning : s.statusTextPaused,
+                  isRunning || isCompleted ? s.statusTextRunning : s.statusTextPaused,
                 ]}
               >
-                {isRunning ? 'RUNNING' : 'PAUSED'}
+                {isRunning ? 'RUNNING' : isCompleted ? 'COMPLETED' : 'PAUSED'}
               </Text>
             </View>
           </View>
@@ -107,19 +108,21 @@ export const BlastActiveBanner: React.FC<Props> = ({ currentRouteName }) => {
 
         {/* Right: Inline Controls & Chevron */}
         <View style={s.actionsRow}>
-          <TouchableOpacity
-            style={s.playPauseBtn}
-            onPress={handleTogglePlayPause}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <AppIcon
-              name={isRunning ? 'pause' : 'play'}
-              size={18}
-              color={colors.primary}
-            />
-          </TouchableOpacity>
+          {!isCompleted && (
+            <TouchableOpacity
+              style={s.playPauseBtn}
+              onPress={handleTogglePlayPause}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <AppIcon
+                name={isRunning ? 'pause' : 'play'}
+                size={18}
+                color={colors.primary}
+              />
+            </TouchableOpacity>
+          )}
           <View style={s.openBtn}>
-            <Text style={s.openBtnText}>Open</Text>
+            <Text style={s.openBtnText}>{isCompleted ? 'Record' : 'Open'}</Text>
             <AppIcon name="chevron-forward" size={14} color="#FFFFFF" />
           </View>
         </View>

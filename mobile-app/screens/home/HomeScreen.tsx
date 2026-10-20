@@ -83,7 +83,6 @@ export default function HomeScreen({ navigation }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterType>('unallocated');
   const [refreshing, setRefreshing] = useState(false);
-  const [isReorderMode, setIsReorderMode] = useState(false);
   const [fabExpanded, setFabExpanded] = useState(false);
   const [alertConfig, setAlertConfig] = useState<ThemedAlertProps | null>(null);
 
@@ -122,10 +121,6 @@ export default function HomeScreen({ navigation }: Props) {
         setSelectedTaskForStatus(null);
         return true;
       }
-      if (isReorderMode) {
-        setIsReorderMode(false);
-        return true;
-      }
       if (!navigation.canGoBack()) {
         BackHandler.exitApp();
         return true;
@@ -135,7 +130,7 @@ export default function HomeScreen({ navigation }: Props) {
 
     const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
     return () => sub.remove();
-  }, [alertConfig, fabExpanded, selectedTaskForStatus, isReorderMode, navigation]);
+  }, [alertConfig, fabExpanded, selectedTaskForStatus, navigation]);
 
   // Auto-transition engine: check clock every 30 seconds for scheduled tasks
   const tracksRef = useRef(tracks);
@@ -205,9 +200,6 @@ export default function HomeScreen({ navigation }: Props) {
 
   // Sort tasks
   const sortedTracks = [...filteredTracks].sort((a, b) => {
-    if (isReorderMode) {
-      return (a.position ?? 0) - (b.position ?? 0);
-    }
     if (taskSortBy === 'priority') {
       const pWeights: Record<string, number> = { high: 3, medium: 2, low: 1 };
       const diff = (pWeights[b.priority] || 0) - (pWeights[a.priority] || 0);
@@ -224,18 +216,6 @@ export default function HomeScreen({ navigation }: Props) {
       return taskSortOrder === 'asc' ? -diff : diff;
     }
   });
-
-  const handleMoveTask = async (index: number, direction: 'up' | 'down') => {
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= sortedTracks.length) return;
-
-    const currentList = [...sortedTracks];
-    const [moved] = currentList.splice(index, 1);
-    currentList.splice(targetIndex, 0, moved);
-
-    const reorderedItems = currentList.map((t, idx) => ({ id: t.id, position: idx }));
-    await reorderTracks(reorderedItems);
-  };
 
   const getGroupKey = (track: Track): string => {
     if (taskSortBy === 'priority') {
@@ -346,24 +326,11 @@ export default function HomeScreen({ navigation }: Props) {
           </ScrollView>
         </View>
 
-        {/* ── List Meta & Reorder Toggle ─────────────────────────── */}
+        {/* ── List Meta ─────────────────────────────────────────── */}
         <View style={s.listMetaRow}>
           <Text style={s.listMetaCount}>
             {sortedTracks.length} {sortedTracks.length === 1 ? 'task' : 'tasks'}
           </Text>
-          <TouchableOpacity
-            style={[s.reorderToggleBtn, isReorderMode && s.reorderToggleBtnActive]}
-            onPress={() => setIsReorderMode((prev) => !prev)}
-          >
-            <AppIcon
-              name="reorder-two-outline"
-              size={16}
-              color={isReorderMode ? colors.primary : colors.textSecondary}
-            />
-            <Text style={[s.reorderToggleText, isReorderMode && s.reorderToggleTextActive]}>
-              {isReorderMode ? 'Done' : 'Reorder'}
-            </Text>
-          </TouchableOpacity>
         </View>
 
         {/* ── Task List ──────────────────────────────────────────── */}
@@ -416,48 +383,6 @@ export default function HomeScreen({ navigation }: Props) {
                         </View>
                       </View>
                     </View>
-
-                    {/* Reorder Buttons Row (when in Reorder Mode) */}
-                    {isReorderMode && (
-                      <View style={s.reorderControlsRow}>
-                        <Text style={s.reorderPosText}>Position #{index + 1}</Text>
-                        <View style={{ flexDirection: 'row', gap: 8 }}>
-                          <TouchableOpacity
-                            style={[s.reorderBtn, index === 0 && s.reorderBtnDisabled]}
-                            onPress={() => handleMoveTask(index, 'up')}
-                            disabled={index === 0}
-                          >
-                            <AppIcon
-                              name="chevron-up"
-                              size={16}
-                              color={index === 0 ? colors.border : colors.primary}
-                            />
-                            <Text style={[s.reorderBtnText, index === 0 && { color: colors.border }]}>
-                              Move Up
-                            </Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[s.reorderBtn, index === sortedTracks.length - 1 && s.reorderBtnDisabled]}
-                            onPress={() => handleMoveTask(index, 'down')}
-                            disabled={index === sortedTracks.length - 1}
-                          >
-                            <AppIcon
-                              name="chevron-down"
-                              size={16}
-                              color={index === sortedTracks.length - 1 ? colors.border : colors.primary}
-                            />
-                            <Text
-                              style={[
-                                s.reorderBtnText,
-                                index === sortedTracks.length - 1 && { color: colors.border },
-                              ]}
-                            >
-                              Move Down
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    )}
 
                     {/* Description */}
                     {!!item.description && (

@@ -6,7 +6,7 @@
  *  - Max 5 lists, max 30 items per list with checkbox completion.
  *  - Max 10 sticky notes, max 255 characters per note with selectable colors.
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -18,12 +18,22 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from '../../components/layout/SafeAreaView';
 import { Header } from '../../components/layout/Header';
 import { AppIcon } from '../../components/ui/AppIcon';
 import { ThemedAlert, ThemedAlertProps } from '../../components/ui';
 import { useTheme } from '../../context/ThemeContext';
 import { useListContext } from '../../context/ListContext';
+import { getDatabase } from '../../services/storage/db';
+import {
+  queryGetAllHabitsWithWeeklyLogs,
+  queryCreateHabit,
+  queryToggleHabitDay,
+  queryDeleteHabit,
+} from '../../services/storage/habitQueries';
+import { HabitWithLogs } from '../../types/Habit';
+import { getCurrentWeekDateRange, getAppTodayDateString } from '../../utils/dateUtils';
 import {
   MAX_LISTS,
   MAX_ITEMS_PER_LIST,
@@ -33,6 +43,7 @@ import {
   Checklist,
   StickyNote,
 } from '../../types/List';
+import { ROUTINE_COLORS } from '../../types/Routine';
 
 export default function ListsScreen() {
   const { colors, isDark } = useTheme();
@@ -49,8 +60,108 @@ export default function ListsScreen() {
     deleteStickyNote,
   } = useListContext();
 
-  const [activeTab, setActiveTab] = useState<'lists' | 'notes'>('lists');
+  const [activeTab, setActiveTab] = useState<'lists' | 'habits' | 'notes'>('lists');
   const [alertConfig, setAlertConfig] = useState<ThemedAlertProps | null>(null);
+
+  // ── Habits State ───────────────────────────────────────────────────────────
+  const [habits, setHabits] = useState<HabitWithLogs[]>([]);
+  const [isHabitModalOpen, setIsHabitModalOpen] = useState(false);
+  const [newHabitName, setNewHabitName] = useState('');
+  const [newHabitColor, setNewHabitColor] = useState(ROUTINE_COLORS[0]);
+
+  const { days: weekDays } = useMemo(() => getCurrentWeekDateRange(), []);
+  const todayStr = useMemo(() => getAppTodayDateString(), []);
+
+  const loadHabits = useCallback(async () => {
+    try {
+      const db = await getDatabase();
+      const start = weekDays[0];
+      const end = weekDays[6];
+      const list = await queryGetAllHabitsWithWeeklyLogs(db, start, end);
+      setHabits(list);
+    } catch (err) {
+      console.warn('loadHabits error:', err);
+    }
+  }, [weekDays]);
+
+  useEffect(() => {
+    loadHabits();
+  }, [loadHabits]);
+
+  const handleCreateHabit = async () => {
+    if (!newHabitName.trim()) return;
+    const db = await getDatabase();
+    await queryCreateHabit(db, newHabitName.trim(), newHabitColor, habits.length);
+    setNewHabitName('');
+    setIsHabitModalOpen(false);
+    await loadHabits();
+  };
+
+  const handleToggleHabit = async (habitId: string, date: string, currentCompleted: boolean) => {
+    const db = await getDatabase();
+    await queryToggleHabitDay(db, habitId, date, !currentCompleted);
+    setHabits((prev) =>
+      prev.map((h) => {
+        if (h.id !== habitId) return h;
+        return {
+          ...h,
+          completedDates: {
+            ...h.completedDates,
+            [date]: !currentCompleted,
+          },
+        };
+      })
+    );
+  };
+
+  const handleDeleteHabit = (habit: HabitWithLogs) => {
+    setAlertConfig({
+      visible: true,
+      title: 'Delete Habit',
+      message: `Are you sure you want to delete "${habit.name}"?`,
+      icon: 'trash-outline',
+      iconColor: colors.error,
+      buttons: [
+        { text: 'Cancel', style: 'cancel', onPress: () => setAlertConfig(null) },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setAlertConfig(null);
+            const db = await getDatabase();
+            await queryDeleteHabit(db, habit.id);
+            await loadHabits();
+          },
+        },
+      ],
+      onClose: () => setAlertConfig(null),
+    });
+  };
+
+  const handleCopyListItems = (list: Checklist) => {
+    const texts = (list.items || []).map((it) => it.text).join('\n');
+    if (!texts.trim()) {
+      setAlertConfig({
+        visible: true,
+        title: 'Empty List',
+        message: 'This checklist has no items to copy.',
+        icon: 'information-circle-outline',
+        buttons: [{ text: 'OK', onPress: () => setAlertConfig(null) }],
+        onClose: () => setAlertConfig(null),
+      });
+      return;
+    }
+    Clipboard.setStringAsync(texts);
+    setAlertConfig({
+      visible: true,
+      title: 'Copied to Clipboard!',
+      message: `Copied ${list.items?.length || 0} items. You can now import or paste them into Goals or Routines.`,
+      icon: 'checkmark-circle-outline',
+      iconColor: colors.success,
+      buttons: [{ text: 'Great', onPress: () => setAlertConfig(null) }],
+      onClose: () => setAlertConfig(null),
+    });
+  };
 
   // ── Create List Modal State ────────────────────────────────────────────────
   const [isListModalOpen, setIsListModalOpen] = useState(false);
@@ -237,7 +348,7 @@ export default function ListsScreen() {
 
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.background }}>
-      <Header title="Lists & Notes" />
+      <Header title="Extra" />
 
       {/* ── Segmented Control Bar ────────────────────────────────────────── */}
       <View style={s.tabBarContainer}>
@@ -249,7 +360,7 @@ export default function ListsScreen() {
           >
             <AppIcon
               name="list-outline"
-              size={18}
+              size={16}
               color={activeTab === 'lists' ? colors.primary : colors.textSecondary}
             />
             <Text
@@ -263,13 +374,33 @@ export default function ListsScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
+            style={[s.segmentButton, activeTab === 'habits' && s.segmentButtonActive]}
+            onPress={() => setActiveTab('habits')}
+            activeOpacity={0.7}
+          >
+            <AppIcon
+              name="fitness-outline"
+              size={16}
+              color={activeTab === 'habits' ? colors.primary : colors.textSecondary}
+            />
+            <Text
+              style={[
+                s.segmentButtonText,
+                activeTab === 'habits' && s.segmentButtonTextActive,
+              ]}
+            >
+              Habits ({habits.length})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={[s.segmentButton, activeTab === 'notes' && s.segmentButtonActive]}
             onPress={() => setActiveTab('notes')}
             activeOpacity={0.7}
           >
             <AppIcon
               name="document-text-outline"
-              size={18}
+              size={16}
               color={activeTab === 'notes' ? colors.primary : colors.textSecondary}
             />
             <Text
@@ -278,7 +409,7 @@ export default function ListsScreen() {
                 activeTab === 'notes' && s.segmentButtonTextActive,
               ]}
             >
-              Sticky Notes ({stickyNotes.length}/{MAX_STICKY_NOTES})
+              Notes ({stickyNotes.length}/{MAX_STICKY_NOTES})
             </Text>
           </TouchableOpacity>
         </View>
@@ -341,13 +472,22 @@ export default function ListsScreen() {
                           {completedItems} of {totalItems} completed ({totalItems}/{MAX_ITEMS_PER_LIST} items)
                         </Text>
                       </View>
-                      <TouchableOpacity
-                        style={s.deleteListBtn}
-                        onPress={() => handleDeleteListPrompt(list)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <AppIcon name="trash-outline" size={18} color={colors.error || '#ef4444'} />
-                      </TouchableOpacity>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <TouchableOpacity
+                          style={s.deleteListBtn}
+                          onPress={() => handleCopyListItems(list)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <AppIcon name="copy-outline" size={18} color={colors.primary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={s.deleteListBtn}
+                          onPress={() => handleDeleteListPrompt(list)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <AppIcon name="trash-outline" size={18} color={colors.error || '#ef4444'} />
+                        </TouchableOpacity>
+                      </View>
                     </View>
 
                     {/* Progress Bar */}
@@ -419,6 +559,116 @@ export default function ListsScreen() {
                   </View>
                 );
               })
+            )}
+          </View>
+        ) : activeTab === 'habits' ? (
+          // ── HABITS VIEW (Weekly Tracking Grid) ───────────────────────────
+          <View style={s.tabSection}>
+            <View style={s.sectionHeader}>
+              <View>
+                <Text style={s.sectionTitle}>Weekly Habits</Text>
+                <Text style={s.sectionSubtitle}>
+                  Simple daily checklist tracked across this calendar week
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={s.addButton}
+                onPress={() => {
+                  setNewHabitName('');
+                  setIsHabitModalOpen(true);
+                }}
+              >
+                <AppIcon name="add" size={18} color="#FFFFFF" />
+                <Text style={s.addButtonText}>New Habit</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Calendar Days Header */}
+            <View style={[s.habitsWeekHeader, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[s.habitsWeekHeaderTitle, { color: colors.textSecondary }]}>Habit</Text>
+              <View style={s.habitsWeekDaysRow}>
+                {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((dayChar, i) => {
+                  const date = weekDays[i];
+                  const isToday = date === todayStr;
+                  return (
+                    <View key={i} style={[s.habitDayHeaderCol, isToday && { backgroundColor: colors.primary + '20', borderRadius: 4 }]}>
+                      <Text style={[s.habitDayHeaderChar, isToday && { color: colors.primary, fontWeight: '800' }]}>
+                        {dayChar}
+                      </Text>
+                      <Text style={[s.habitDayHeaderNum, isToday && { color: colors.primary, fontWeight: '700' }]}>
+                        {date ? parseInt(date.split('-')[2], 10) : ''}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+
+            {habits.length === 0 ? (
+              <View style={s.emptyBox}>
+                <AppIcon name="fitness-outline" size={48} color={colors.textTertiary} />
+                <Text style={s.emptyTitle}>No habits tracked yet</Text>
+                <Text style={s.emptySubtitle}>
+                  Add daily recurring habits like "Drink 2L Water", "Gym", or "Read 20 Mins".
+                </Text>
+                <TouchableOpacity
+                  style={s.emptyCreateBtn}
+                  onPress={() => {
+                    setNewHabitName('');
+                    setIsHabitModalOpen(true);
+                  }}
+                >
+                  <Text style={s.emptyCreateBtnText}>+ Add First Habit</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              habits.map((habit) => (
+                <View key={habit.id} style={[s.habitCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={s.habitCardHeader}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                      <View style={[s.habitColorDot, { backgroundColor: habit.color }]} />
+                      <Text style={s.habitName} numberOfLines={1}>{habit.name}</Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => handleDeleteHabit(habit)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <AppIcon name="trash-outline" size={16} color={colors.textTertiary} />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* 7-day checkboxes row */}
+                  <View style={s.habitDaysCheckRow}>
+                    {weekDays.map((date) => {
+                      const isCompleted = !!habit.completedDates[date];
+                      const isToday = date === todayStr;
+
+                      return (
+                        <TouchableOpacity
+                          key={date}
+                          style={[
+                            s.habitDayCheckCol,
+                            isToday && { backgroundColor: habit.color + '10', borderRadius: 8 },
+                          ]}
+                          onPress={() => handleToggleHabit(habit.id, date, isCompleted)}
+                          activeOpacity={0.7}
+                        >
+                          <View
+                            style={[
+                              s.habitCircle,
+                              isCompleted
+                                ? { backgroundColor: habit.color, borderColor: habit.color }
+                                : { borderColor: isToday ? colors.primary : colors.border },
+                            ]}
+                          >
+                            {isCompleted && <AppIcon name="checkmark" size={14} color="#FFFFFF" />}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              ))
             )}
           </View>
         ) : (
@@ -646,6 +896,75 @@ export default function ListsScreen() {
                 <Text style={s.modalBtnTextPrimary}>
                   {editingNoteId ? 'Save Changes' : 'Pin Note'}
                 </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ── CREATE HABIT MODAL ────────────────────────────────────────────── */}
+      <Modal
+        visible={isHabitModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsHabitModalOpen(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={s.modalOverlay}
+        >
+          <View style={s.modalCard}>
+            <Text style={s.modalTitle}>New Habit</Text>
+            <Text style={s.modalSubtitle}>
+              Track a daily habit across Monday to Sunday
+            </Text>
+
+            <TextInput
+              style={s.modalInput}
+              placeholder="e.g. Drink 2L Water, Workout, Read"
+              placeholderTextColor={colors.textTertiary}
+              value={newHabitName}
+              onChangeText={setNewHabitName}
+              autoFocus
+              maxLength={40}
+            />
+
+            {/* Color Palette Selector */}
+            <Text style={s.colorLabel}>Select Color</Text>
+            <View style={s.colorPaletteRow}>
+              {ROUTINE_COLORS.map((c) => {
+                const isSelected = newHabitColor === c;
+                return (
+                  <TouchableOpacity
+                    key={c}
+                    style={[
+                      s.colorChip,
+                      { backgroundColor: c, borderColor: c },
+                      isSelected && s.colorChipSelected,
+                    ]}
+                    onPress={() => setNewHabitColor(c)}
+                  >
+                    {isSelected && (
+                      <AppIcon name="checkmark" size={16} color="#FFFFFF" />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={s.modalButtonRow}>
+              <TouchableOpacity
+                style={[s.modalBtn, s.modalBtnCancel]}
+                onPress={() => setIsHabitModalOpen(false)}
+              >
+                <Text style={s.modalBtnTextCancel}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.modalBtn, s.modalBtnPrimary, !newHabitName.trim() && s.modalBtnDisabled]}
+                onPress={handleCreateHabit}
+                disabled={!newHabitName.trim()}
+              >
+                <Text style={s.modalBtnTextPrimary}>Add Habit</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1035,6 +1354,84 @@ function makeStyles(colors: any, isDark: boolean) {
       fontSize: 13,
       fontWeight: '600',
       color: '#FFFFFF',
+    },
+    // Habits Styles
+    habitsWeekHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 10,
+      borderWidth: 1,
+      marginBottom: 10,
+    },
+    habitsWeekHeaderTitle: {
+      fontSize: 12,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    habitsWeekDaysRow: {
+      flexDirection: 'row',
+      gap: 6,
+    },
+    habitDayHeaderCol: {
+      width: 28,
+      alignItems: 'center',
+      paddingVertical: 2,
+    },
+    habitDayHeaderChar: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    habitDayHeaderNum: {
+      fontSize: 10,
+      color: colors.textTertiary,
+      marginTop: 2,
+    },
+    habitCard: {
+      borderRadius: 12,
+      borderWidth: 1,
+      padding: 14,
+      marginBottom: 10,
+    },
+    habitCardHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 12,
+    },
+    habitColorDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+    },
+    habitName: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.text,
+      flex: 1,
+    },
+    habitDaysCheckRow: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      gap: 6,
+    },
+    habitDayCheckCol: {
+      width: 28,
+      height: 32,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    habitCircle: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      borderWidth: 1.5,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
   });
 }

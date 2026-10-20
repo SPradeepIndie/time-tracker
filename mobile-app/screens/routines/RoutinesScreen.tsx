@@ -12,19 +12,23 @@ import {
 import { SafeAreaView } from '../../components/layout/SafeAreaView';
 import { useTheme } from '../../context/ThemeContext';
 import { useRoutineContext } from '../../context/RoutineContext';
+import { useListContext } from '../../context/ListContext';
 import { RoutinesScreenNavigationProp } from '../../navigation/types';
 import { AppIcon } from '../../components/ui/AppIcon';
-import { Routine, SubActivity, RoutineReminder, RoutineActivityLog, ROUTINE_COLORS } from '../../types/Routine';
+import { Routine, RoutineFrequency, SubActivity, RoutineReminder, RoutineActivityLog, ROUTINE_COLORS } from '../../types/Routine';
 
 import { getAppTodayDateString } from '../../utils/dateUtils';
 
 interface Props { navigation: RoutinesScreenNavigationProp; }
 
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
 export default function RoutinesScreen({ navigation }: Props) {
   const { colors } = useTheme();
+  const { checklists } = useListContext();
   const {
     routines, isLoading,
-    addRoutine, updateRoutine, deleteRoutine,
+    addRoutine, updateRoutine, reorderRoutines, deleteRoutine,
     getSubActivities, addSubActivity, updateSubActivity, deleteSubActivity,
     getReminders, addReminder, toggleReminderEnabled, deleteReminder,
     getDailyLogs, toggleActivityLog,
@@ -50,6 +54,10 @@ export default function RoutinesScreen({ navigation }: Props) {
   const [routineName, setRoutineName] = useState('');
   const [routineDesc, setRoutineDesc] = useState('');
   const [routineColor, setRoutineColor] = useState(ROUTINE_COLORS[0]);
+  const [routineFrequency, setRoutineFrequency] = useState<RoutineFrequency>('daily');
+  const [routineDays, setRoutineDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
+  const [importMultilineItems, setImportMultilineItems] = useState('');
+  const [isReorderMode, setIsReorderMode] = useState(false);
   const [editRoutineId, setEditRoutineId] = useState('');
   const [newActivity, setNewActivity] = useState('');
   const [editActivityId, setEditActivityId] = useState('');
@@ -119,18 +127,65 @@ export default function RoutinesScreen({ navigation }: Props) {
 
   // ── Actions ────────────────────────────────────────────────────────────────
 
+  const handleMoveRoutine = async (index: number, direction: 'up' | 'down') => {
+    const targetIdx = direction === 'up' ? index - 1 : index + 1;
+    if (targetIdx < 0 || targetIdx >= routines.length) return;
+    const copy = [...routines];
+    const temp = copy[index];
+    copy[index] = copy[targetIdx];
+    copy[targetIdx] = temp;
+    await reorderRoutines(copy.map((r, i) => ({ id: r.id, position: i })));
+  };
+
+  const toggleDaySelection = (dayIndex: number) => {
+    setRoutineDays((prev) => {
+      if (prev.includes(dayIndex)) {
+        if (prev.length <= 1) return prev; // keep at least 1 day
+        return prev.filter((d) => d !== dayIndex);
+      } else {
+        return [...prev, dayIndex].sort();
+      }
+    });
+  };
+
   const handleCreateRoutine = useCallback(async () => {
     if (!routineName.trim()) return;
-    await addRoutine(routineName.trim(), routineDesc.trim(), routineColor);
-    setRoutineName(''); setRoutineDesc(''); setRoutineColor(ROUTINE_COLORS[0]);
+    const newRoutine = await addRoutine(
+      routineName.trim(),
+      routineDesc.trim(),
+      routineColor,
+      routineFrequency,
+      routineFrequency === 'weekly' ? routineDays : [0, 1, 2, 3, 4, 5, 6]
+    );
+
+    // If import items provided, add sub activities
+    const lines = importMultilineItems
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+    if (lines.length > 0 && newRoutine) {
+      for (const line of lines) {
+        await addSubActivity(newRoutine.id, line);
+      }
+      await loadRoutineData(newRoutine.id);
+    }
+
+    setRoutineName('');
+    setRoutineDesc('');
+    setRoutineColor(ROUTINE_COLORS[0]);
+    setRoutineFrequency('daily');
+    setRoutineDays([0, 1, 2, 3, 4, 5, 6]);
+    setImportMultilineItems('');
     setCreateRoutineModal(false);
-  }, [routineName, routineDesc, routineColor, addRoutine]);
+  }, [routineName, routineDesc, routineColor, routineFrequency, routineDays, importMultilineItems, addRoutine, addSubActivity, loadRoutineData]);
 
   const handleStartEditRoutine = (routine: Routine) => {
     setEditRoutineId(routine.id);
     setRoutineName(routine.name);
     setRoutineDesc(routine.description || '');
     setRoutineColor(routine.color);
+    setRoutineFrequency(routine.frequency || 'daily');
+    setRoutineDays(routine.daysOfWeek || [0, 1, 2, 3, 4, 5, 6]);
     setEditRoutineModal(true);
   };
 
@@ -140,6 +195,8 @@ export default function RoutinesScreen({ navigation }: Props) {
       name: routineName.trim(),
       description: routineDesc.trim(),
       color: routineColor,
+      frequency: routineFrequency,
+      daysOfWeek: routineDays,
     });
     setEditRoutineModal(false);
   };
@@ -214,17 +271,45 @@ export default function RoutinesScreen({ navigation }: Props) {
           >
             <View style={[s.colorBadge, { backgroundColor: routine.color }]} />
             <View style={{ flex: 1, paddingRight: 6 }}>
-              <Text style={s.routineName}>{routine.name}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={s.routineName}>{routine.name}</Text>
+                <View style={[s.freqBadge, { backgroundColor: routine.color + '20' }]}>
+                  <Text style={[s.freqBadgeText, { color: routine.color }]}>
+                    {routine.frequency === 'weekly'
+                      ? `Weekly: ${(routine.daysOfWeek || []).map((d) => DAY_NAMES[d]).join(', ')}`
+                      : 'Daily'}
+                  </Text>
+                </View>
+              </View>
               {routine.description ? <Text style={s.routineDesc}>{routine.description}</Text> : null}
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }}
-            onPress={() => handleStartEditRoutine(routine)}
-          >
-            <AppIcon name="pencil" size={16} color={colors.textSecondary} />
-          </TouchableOpacity>
+          {isReorderMode ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <TouchableOpacity
+                style={[s.reorderMoveBtn, routines.indexOf(routine) === 0 && { opacity: 0.3 }]}
+                disabled={routines.indexOf(routine) === 0}
+                onPress={() => handleMoveRoutine(routines.indexOf(routine), 'up')}
+              >
+                <AppIcon name="chevron-up" size={18} color={colors.primary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.reorderMoveBtn, routines.indexOf(routine) === routines.length - 1 && { opacity: 0.3 }]}
+                disabled={routines.indexOf(routine) === routines.length - 1}
+                onPress={() => handleMoveRoutine(routines.indexOf(routine), 'down')}
+              >
+                <AppIcon name="chevron-down" size={18} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }}
+              onPress={() => handleStartEditRoutine(routine)}
+            >
+              <AppIcon name="pencil" size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 4 }}
@@ -360,12 +445,23 @@ export default function RoutinesScreen({ navigation }: Props) {
             <AppIcon name="repeat" size={24} color={colors.primary} />
             <Text style={s.headerTitle}>Routines</Text>
           </View>
-          <TouchableOpacity
-            style={[s.createBtn, { backgroundColor: colors.primary }]}
-            onPress={() => setCreateRoutineModal(true)}
-          >
-            <Text style={s.createBtnText}>+ New</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity
+              style={[s.reorderToggleBtn, isReorderMode && { backgroundColor: colors.primary + '25', borderColor: colors.primary }]}
+              onPress={() => setIsReorderMode((p) => !p)}
+            >
+              <AppIcon name="reorder-two-outline" size={18} color={isReorderMode ? colors.primary : colors.textSecondary} />
+              <Text style={[s.reorderToggleText, { color: isReorderMode ? colors.primary : colors.textSecondary }]}>
+                {isReorderMode ? 'Done' : 'Reorder'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.createBtn, { backgroundColor: colors.primary }]}
+              onPress={() => setCreateRoutineModal(true)}
+            >
+              <Text style={s.createBtnText}>+ New</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {isLoading ? (
@@ -416,6 +512,97 @@ export default function RoutinesScreen({ navigation }: Props) {
                     />
                   ))}
                 </ScrollView>
+
+                {/* Frequency selector: Daily vs Weekly */}
+                <Text style={[s.modalLabel, { color: colors.textSecondary }]}>Schedule Frequency</Text>
+                <View style={s.freqSelectorRow}>
+                  <TouchableOpacity
+                    style={[s.freqOptionBtn, routineFrequency === 'daily' && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                    onPress={() => setRoutineFrequency('daily')}
+                  >
+                    <Text style={[s.freqOptionText, routineFrequency === 'daily' && { color: '#fff', fontWeight: '700' }]}>
+                      Daily
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[s.freqOptionBtn, routineFrequency === 'weekly' && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                    onPress={() => setRoutineFrequency('weekly')}
+                  >
+                    <Text style={[s.freqOptionText, routineFrequency === 'weekly' && { color: '#fff', fontWeight: '700' }]}>
+                      Weekly (Specific Days)
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Specific days pills if weekly */}
+                {routineFrequency === 'weekly' && (
+                  <View style={{ marginBottom: 16 }}>
+                    <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 8 }}>
+                      Select Days to repeat:
+                    </Text>
+                    <View style={s.daysPillsRow}>
+                      {DAY_NAMES.map((name, idx) => {
+                        const isSelected = routineDays.includes(idx);
+                        return (
+                          <TouchableOpacity
+                            key={name}
+                            style={[
+                              s.dayPill,
+                              isSelected && { backgroundColor: colors.primary, borderColor: colors.primary },
+                            ]}
+                            onPress={() => toggleDaySelection(idx)}
+                          >
+                            <Text style={[s.dayPillText, isSelected && { color: '#fff', fontWeight: '700' }]}>
+                              {name}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                )}
+
+                {/* Import from Checklist or multi-line items */}
+                <View style={{ marginTop: 8, marginBottom: 16 }}>
+                  <Text style={[s.modalLabel, { color: colors.textSecondary }]}>
+                    Initial Activities (Import or Type):
+                  </Text>
+                  {checklists.length > 0 && (
+                    <View style={{ marginBottom: 8 }}>
+                      <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 4 }}>
+                        Quick Import from Saved Checklist:
+                      </Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
+                        {checklists.map((cl) => (
+                          <TouchableOpacity
+                            key={cl.id}
+                            style={[s.importChip, { backgroundColor: colors.card, borderColor: colors.border }]}
+                            onPress={() => {
+                              const texts = (cl.items || []).map((it) => it.text).join('\n');
+                              setImportMultilineItems(texts);
+                            }}
+                          >
+                            <AppIcon name="list" size={13} color={colors.primary} />
+                            <Text style={[s.importChipText, { color: colors.text }]}>
+                              {cl.title}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  )}
+                  <TextInput
+                    style={[s.modalInput, { borderColor: colors.border, color: colors.text, minHeight: 80 }]}
+                    placeholder={"Activity 1\nActivity 2\nActivity 3 (one per line)"}
+                    placeholderTextColor={colors.placeholder}
+                    value={importMultilineItems}
+                    onChangeText={setImportMultilineItems}
+                    multiline
+                    numberOfLines={4}
+                    textAlignVertical="top"
+                  />
+                </View>
+
                 <View style={s.modalActions}>
                   <TouchableOpacity onPress={() => setCreateRoutineModal(false)}>
                     <Text style={[s.modalCancel, { color: colors.textSecondary }]}>Cancel</Text>
@@ -688,6 +875,88 @@ function makeStyles(colors: any) {
     timeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 8 },
     timeInput: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 20, fontWeight: '700', width: 70, textAlign: 'center' },
     timeSep: { fontSize: 24, fontWeight: '700' },
+    freqBadge: {
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 6,
+    },
+    freqBadgeText: {
+      fontSize: 10,
+      fontWeight: '700',
+    },
+    reorderToggleBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    reorderToggleText: {
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    reorderMoveBtn: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.card,
+    },
+    freqSelectorRow: {
+      flexDirection: 'row',
+      gap: 8,
+      marginBottom: 14,
+    },
+    freqOptionBtn: {
+      flex: 1,
+      paddingVertical: 8,
+      alignItems: 'center',
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+    },
+    freqOptionText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    daysPillsRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+    },
+    dayPill: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+    },
+    dayPillText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.textSecondary,
+    },
+    importChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 8,
+      borderWidth: 1,
+      marginRight: 6,
+    },
+    importChipText: {
+      fontSize: 12,
+      fontWeight: '600',
+    },
   });
 }
 

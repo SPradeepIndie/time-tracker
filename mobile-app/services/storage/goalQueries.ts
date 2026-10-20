@@ -494,3 +494,12 @@ export async function queryRolloverUncompletedWeeklyGoals(
   return pastUncompleted.length;
 }
 
+export async function queryUpdateDailyGoalPositions(
+  db: SQLiteDatabase,
+  items: { id: string; position: number }[]
+): Promise<void> {
+  for (const item of items) {
+    await db.runAsync('UPDATE daily_goals SET position = ? WHERE id = ?;', [item.position, item.id]);
+  }
+}
+

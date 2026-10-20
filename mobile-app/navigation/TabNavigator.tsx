@@ -88,9 +88,9 @@ export const TabNavigator: React.FC = () => {
         component={ListsScreen}
         options={{
           tabBarIcon: ({ color, focused }) => (
-            <AppIcon name={focused ? 'list' : 'list-outline'} size={22} color={color} />
+            <AppIcon name={focused ? 'grid' : 'grid-outline'} size={22} color={color} />
           ),
-          tabBarLabel: 'Lists',
+          tabBarLabel: 'Extra',
         }}
       />
       <Tab.Screen
