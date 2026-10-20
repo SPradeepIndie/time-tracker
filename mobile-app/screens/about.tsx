@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { AppIcon } from '../components/ui/AppIcon';
 
@@ -17,6 +17,19 @@ export default function InfoScreen() {
         <Text style={styles.headerTitle}>App Information</Text>
         <View style={styles.versionBadge}>
           <Text style={styles.versionBadgeText}>v1.0.0 Release</Text>
+        </View>
+      </View>
+
+      {/* ── KATTA Tech Production Card ── */}
+      <View style={[styles.section, styles.kattaCard]}>
+        <Image
+          source={require('../assets/katta-logo.png')}
+          style={styles.kattaLogo}
+          resizeMode="contain"
+        />
+        <View style={styles.kattaBadge}>
+          <AppIcon name="shield-checkmark" size={14} color="#38BDF8" />
+          <Text style={styles.kattaBadgeText}>A Production of KATTA Tech</Text>
         </View>
       </View>
 
@@ -202,6 +215,37 @@ function makeStyles(colors: any) {
       borderRadius: 14,
       borderWidth: 1,
       borderColor: colors.border,
+    },
+    kattaCard: {
+      alignItems: 'center',
+      paddingVertical: 24,
+      backgroundColor: '#090D16',
+      borderWidth: 1.5,
+      borderColor: '#38BDF840',
+      overflow: 'hidden',
+    },
+    kattaLogo: {
+      width: 170,
+      height: 170,
+      marginBottom: 12,
+    },
+    kattaBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: '#38BDF815',
+      paddingHorizontal: 16,
+      paddingVertical: 7,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: '#38BDF835',
+    },
+    kattaBadgeText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: '#38BDF8',
+      letterSpacing: 0.8,
+      textTransform: 'uppercase',
     },
     signatureCard: {
       borderWidth: 1.5,
