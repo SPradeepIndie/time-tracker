@@ -26,6 +26,7 @@ import {
   queryUpdateWeeklyGoalCompletion,
   queryUpdateWeeklyGoalText,
   queryDeleteWeeklyGoal,
+  queryUpdateDailyGoalPositions,
 } from '../services/storage/goalQueries';
 import {
   DailyGoal,
@@ -49,6 +50,7 @@ interface GoalContextValue {
   addDailyGoal: (text: string, date: string) => Promise<void>;
   toggleDailyGoal: (id: string, isCompleted: boolean) => Promise<void>;
   updateDailyGoalText: (id: string, text: string) => Promise<void>;
+  reorderDailyGoals: (items: { id: string; position: number }[]) => Promise<void>;
   deleteDailyGoal: (id: string) => Promise<void>;
 
   // Weekly Goal Categories
@@ -154,6 +156,22 @@ export function GoalProvider({ children }: { children: React.ReactNode }) {
     setTomorrowGoals((prev) => prev.map((g) => g.id === id ? { ...g, text } : g));
   }, []);
 
+  const reorderDailyGoals = useCallback(async (items: { id: string; position: number }[]) => {
+    const db = await getDatabase();
+    await queryUpdateDailyGoalPositions(db, items);
+    const posMap = new Map(items.map((i) => [i.id, i.position]));
+    setTodayGoals((prev) =>
+      prev
+        .map((g) => (posMap.has(g.id) ? { ...g, position: posMap.get(g.id)! } : g))
+        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+    );
+    setTomorrowGoals((prev) =>
+      prev
+        .map((g) => (posMap.has(g.id) ? { ...g, position: posMap.get(g.id)! } : g))
+        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+    );
+  }, []);
+
   const deleteDailyGoal = useCallback(async (id: string) => {
     const db = await getDatabase();
     await queryDeleteDailyGoal(db, id);
@@ -246,6 +264,7 @@ export function GoalProvider({ children }: { children: React.ReactNode }) {
       addDailyGoal,
       toggleDailyGoal,
       updateDailyGoalText,
+      reorderDailyGoals,
       deleteDailyGoal,
       categories,
       addCategory,
@@ -270,6 +289,7 @@ export function GoalProvider({ children }: { children: React.ReactNode }) {
       addDailyGoal,
       toggleDailyGoal,
       updateDailyGoalText,
+      reorderDailyGoals,
       deleteDailyGoal,
       categories,
       addCategory,

@@ -14,6 +14,7 @@ import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from '../../components/layout/SafeAreaView';
 import { useTheme } from '../../context/ThemeContext';
 import { useGoalContext } from '../../context/GoalContext';
+import { useListContext } from '../../context/ListContext';
 import { GoalsScreenNavigationProp } from '../../navigation/types';
 import { AppIcon } from '../../components/ui/AppIcon';
 import { DailyGoal, WeeklyGoal, WeeklyGoalCategory, MAX_DAILY_GOALS, INITIAL_DAILY_GOAL_FIELDS, getTodayDateString, getTomorrowDateString } from '../../types/Goal';
@@ -25,9 +26,10 @@ type TabType = 'daily' | 'weekly';
 
 export default function GoalsScreen({ navigation }: Props) {
   const { colors } = useTheme();
+  const { checklists } = useListContext();
   const {
     todayGoals, tomorrowGoals, isLoading,
-    addDailyGoal, toggleDailyGoal, updateDailyGoalText, deleteDailyGoal,
+    addDailyGoal, toggleDailyGoal, updateDailyGoalText, reorderDailyGoals, deleteDailyGoal,
     categories, addCategory, updateCategory, deleteCategory,
     weeklyGoals, currentWeekLabel, nextWeekLabel, selectedWeekLabel, setSelectedWeekLabel,
     addWeeklyGoal, toggleWeeklyGoal, updateWeeklyGoalText, deleteWeeklyGoal,
@@ -64,11 +66,43 @@ export default function GoalsScreen({ navigation }: Props) {
   const [editingGoalId, setEditingGoalId] = useState('');
   const [editingGoalText, setEditingGoalText] = useState('');
 
+  // Reordering & Import states
+  const [isReorderMode, setIsReorderMode] = useState(false);
+  const [importModal, setImportModal] = useState(false);
+  const [importMultilineText, setImportMultilineText] = useState('');
+
   // Expanded goal IDs (for showing children)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   const tomorrow = getTomorrowDateString();
   const today = getTodayDateString();
+
+  const handleMoveDailyGoal = async (list: DailyGoal[], index: number, direction: 'up' | 'down') => {
+    const targetIdx = direction === 'up' ? index - 1 : index + 1;
+    if (targetIdx < 0 || targetIdx >= list.length) return;
+    const copy = [...list];
+    const temp = copy[index];
+    copy[index] = copy[targetIdx];
+    copy[targetIdx] = temp;
+    await reorderDailyGoals(copy.map((g, idx) => ({ id: g.id, position: idx })));
+  };
+
+  const handleExecuteImport = async () => {
+    const lines = importMultilineText
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+    if (lines.length === 0) {
+      Alert.alert('Empty List', 'Please paste or select some list items to import.');
+      return;
+    }
+    for (const line of lines) {
+      await addDailyGoal(line, tomorrow);
+    }
+    setImportMultilineText('');
+    setImportModal(false);
+    Alert.alert('Success', `Imported ${lines.length} daily goals for tomorrow!`);
+  };
 
   const s = useMemo(() => makeStyles(colors), [colors]);
 
@@ -136,7 +170,7 @@ export default function GoalsScreen({ navigation }: Props) {
 
   // ── Render: Daily Goal Row ────────────────────────────────────────────────
 
-  const renderDailyGoalRow = (goal: DailyGoal) => (
+  const renderDailyGoalRow = (goal: DailyGoal, index: number, list: DailyGoal[]) => (
     <View key={goal.id} style={s.goalRow}>
       <TouchableOpacity
         style={[s.checkbox, goal.isCompleted && s.checkboxDone]}
@@ -153,28 +187,48 @@ export default function GoalsScreen({ navigation }: Props) {
           </View>
         )}
       </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <TouchableOpacity
-          onPress={() => {
-            setEditingGoalType('daily');
-            setEditingGoalId(goal.id);
-            setEditingGoalText(goal.text);
-            setEditGoalModal(true);
-          }}
-          style={s.actionIconBtn}
-        >
-          <AppIcon name="pencil" size={17} color={colors.textSecondary} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => handleCopyGoalText(goal.text)}
-          style={s.actionIconBtn}
-        >
-          <AppIcon name="copy" size={17} color={colors.textSecondary} />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => deleteDailyGoal(goal.id)} style={s.deleteBtn}>
-          <AppIcon name="trash" size={17} color={colors.error || '#EF4444'} />
-        </TouchableOpacity>
-      </View>
+
+      {isReorderMode ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <TouchableOpacity
+            style={[s.actionIconBtn, index === 0 && { opacity: 0.3 }]}
+            disabled={index === 0}
+            onPress={() => handleMoveDailyGoal(list, index, 'up')}
+          >
+            <AppIcon name="chevron-up" size={18} color={colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.actionIconBtn, index === list.length - 1 && { opacity: 0.3 }]}
+            disabled={index === list.length - 1}
+            onPress={() => handleMoveDailyGoal(list, index, 'down')}
+          >
+            <AppIcon name="chevron-down" size={18} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TouchableOpacity
+            onPress={() => {
+              setEditingGoalType('daily');
+              setEditingGoalId(goal.id);
+              setEditingGoalText(goal.text);
+              setEditGoalModal(true);
+            }}
+            style={s.actionIconBtn}
+          >
+            <AppIcon name="pencil" size={17} color={colors.textSecondary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => handleCopyGoalText(goal.text)}
+            style={s.actionIconBtn}
+          >
+            <AppIcon name="copy" size={17} color={colors.textSecondary} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => deleteDailyGoal(goal.id)} style={s.deleteBtn}>
+            <AppIcon name="trash" size={17} color={colors.error || '#EF4444'} />
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 
@@ -311,6 +365,17 @@ export default function GoalsScreen({ navigation }: Props) {
             <AppIcon name="flag" size={24} color={colors.primary} />
             <Text style={s.headerTitle}>Goals</Text>
           </View>
+          {activeTab === 'daily' && (
+            <TouchableOpacity
+              style={[s.reorderHeaderBtn, isReorderMode && { backgroundColor: colors.primary + '25', borderColor: colors.primary }]}
+              onPress={() => setIsReorderMode((p) => !p)}
+            >
+              <AppIcon name="reorder-two-outline" size={18} color={isReorderMode ? colors.primary : colors.textSecondary} />
+              <Text style={[s.reorderHeaderText, { color: isReorderMode ? colors.primary : colors.textSecondary }]}>
+                {isReorderMode ? 'Done' : 'Reorder'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Tab Switcher */}
@@ -343,7 +408,7 @@ export default function GoalsScreen({ navigation }: Props) {
                       <AppIcon name="calendar" size={16} color={colors.primary} />
                       <Text style={s.sectionTitle}>Today's Goals</Text>
                     </View>
-                    {todayGoals.map(renderDailyGoalRow)}
+                    {todayGoals.map((g, idx) => renderDailyGoalRow(g, idx, todayGoals))}
                   </View>
                 )}
 
@@ -354,11 +419,20 @@ export default function GoalsScreen({ navigation }: Props) {
                       <AppIcon name="moon" size={16} color={colors.primary} />
                       <Text style={s.sectionTitle}>Plan for Tomorrow</Text>
                     </View>
-                    <Text style={s.countLabel}>{tomorrowGoals.length}/{MAX_DAILY_GOALS}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <TouchableOpacity
+                        style={s.importListTriggerBtn}
+                        onPress={() => setImportModal(true)}
+                      >
+                        <AppIcon name="download-outline" size={14} color={colors.primary} />
+                        <Text style={[s.importListTriggerText, { color: colors.primary }]}>Import List</Text>
+                      </TouchableOpacity>
+                      <Text style={s.countLabel}>{tomorrowGoals.length}/{MAX_DAILY_GOALS}</Text>
+                    </View>
                   </View>
 
                   {/* Existing tomorrow goals */}
-                  {tomorrowGoals.map(renderDailyGoalRow)}
+                  {tomorrowGoals.map((g, idx) => renderDailyGoalRow(g, idx, tomorrowGoals))}
 
                   {/* Input fields for new goals */}
                   {tomorrowGoals.length < MAX_DAILY_GOALS && (
@@ -627,6 +701,78 @@ export default function GoalsScreen({ navigation }: Props) {
             </View>
           </KeyboardAvoidingView>
         </Modal>
+
+        {/* ── Import List Modal ────────────────────────────────────── */}
+        <Modal visible={importModal} transparent animationType="fade">
+          <KeyboardAvoidingView
+            style={s.modalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+              <View style={s.modalBackdrop} />
+            </TouchableWithoutFeedback>
+            <View style={[s.modalCard, { backgroundColor: colors.surface }]}>
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <Text style={[s.modalTitle, { color: colors.text }]}>Import Goals from List</Text>
+                <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 12 }}>
+                  Select an existing checklist or paste multi-line text (each line creates an individual goal).
+                </Text>
+
+                {/* Checklist options */}
+                {checklists.length > 0 && (
+                  <View style={{ marginBottom: 16 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginBottom: 8, textTransform: 'uppercase' }}>
+                      Pick from Saved Checklists:
+                    </Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
+                      {checklists.map((cl) => (
+                        <TouchableOpacity
+                          key={cl.id}
+                          style={[s.importChecklistChip, { backgroundColor: colors.card, borderColor: colors.border }]}
+                          onPress={() => {
+                            const texts = (cl.items || []).map((it) => it.text).join('\n');
+                            setImportMultilineText(texts);
+                          }}
+                        >
+                          <AppIcon name="list" size={14} color={colors.primary} />
+                          <Text style={[s.importChecklistChipText, { color: colors.text }]}>
+                            {cl.title} ({cl.items?.length || 0})
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginBottom: 6, textTransform: 'uppercase' }}>
+                  Goal Items (One per line):
+                </Text>
+                <TextInput
+                  style={[s.modalMultilineInput, { borderColor: colors.border, color: colors.text }]}
+                  placeholder={"Buy groceries\nComplete math assignment\nHit the gym"}
+                  placeholderTextColor={colors.placeholder}
+                  value={importMultilineText}
+                  onChangeText={setImportMultilineText}
+                  multiline
+                  numberOfLines={6}
+                  textAlignVertical="top"
+                />
+
+                <View style={s.modalActions}>
+                  <TouchableOpacity onPress={() => { setImportModal(false); setImportMultilineText(''); }}>
+                    <Text style={[s.modalCancel, { color: colors.textSecondary }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[s.modalConfirm, { backgroundColor: colors.primary }]}
+                    onPress={handleExecuteImport}
+                  >
+                    <Text style={s.modalConfirmText}>Import Goals</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
       </View>
     </SafeAreaView>
   );
@@ -635,7 +781,7 @@ export default function GoalsScreen({ navigation }: Props) {
 function makeStyles(colors: any) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    header: { paddingHorizontal: 20, paddingVertical: 16 },
+    header: { paddingHorizontal: 20, paddingVertical: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     headerTitle: { fontSize: 26, fontWeight: '800', color: colors.text },
     tabBar: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border },
     tab: { flex: 1, alignItems: 'center', paddingVertical: 12 },
@@ -762,6 +908,46 @@ function makeStyles(colors: any) {
       fontSize: 10,
       fontWeight: '700',
       color: '#F59E0B',
+    },
+    reorderHeaderBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    reorderHeaderText: { fontSize: 13, fontWeight: '600' },
+    importListTriggerBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+      backgroundColor: colors.primary + '18',
+    },
+    importListTriggerText: { fontSize: 12, fontWeight: '700' },
+    importChecklistChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 8,
+      borderWidth: 1,
+      marginRight: 8,
+    },
+    importChecklistChipText: { fontSize: 13, fontWeight: '600' },
+    modalMultilineInput: {
+      borderWidth: 1,
+      borderRadius: 10,
+      padding: 12,
+      fontSize: 14,
+      minHeight: 110,
+      marginBottom: 12,
     },
   });
 }

@@ -21,12 +21,13 @@ import {
   queryGetAllEnabledReminders,
   queryEnsureLogsForDate,
   queryToggleActivityLog,
+  queryUpdateRoutinePositions,
 } from '../services/storage/routineQueries';
 import {
   scheduleRoutineReminder,
   cancelRoutineReminder,
 } from '../services/notifications/notificationService';
-import { Routine, SubActivity, RoutineReminder, RoutineActivityLog } from '../types/Routine';
+import { Routine, RoutineFrequency, SubActivity, RoutineReminder, RoutineActivityLog } from '../types/Routine';
 import * as Crypto from 'expo-crypto';
 
 // ─── Context Shape ────────────────────────────────────────────────────────────
@@ -34,8 +35,9 @@ import * as Crypto from 'expo-crypto';
 interface RoutineContextValue {
   routines: Routine[];
   loadRoutines: () => Promise<void>;
-  addRoutine: (name: string, description: string, color: string) => Promise<void>;
-  updateRoutine: (id: string, updates: Partial<Pick<Routine, 'name' | 'description' | 'color'>>) => Promise<void>;
+  addRoutine: (name: string, description: string, color: string, frequency?: RoutineFrequency, daysOfWeek?: number[]) => Promise<Routine>;
+  updateRoutine: (id: string, updates: Partial<Pick<Routine, 'name' | 'description' | 'color' | 'frequency' | 'daysOfWeek'>>) => Promise<void>;
+  reorderRoutines: (items: { id: string; position: number }[]) => Promise<void>;
   deleteRoutine: (id: string) => Promise<void>;
 
   // Sub-activities
@@ -76,7 +78,13 @@ export function RoutineProvider({ children }: { children: React.ReactNode }) {
 
   // ── Routine CRUD ────────────────────────────────────────────────────────────
 
-  const addRoutine = useCallback(async (name: string, description: string, color: string) => {
+  const addRoutine = useCallback(async (
+    name: string,
+    description: string,
+    color: string,
+    frequency: RoutineFrequency = 'daily',
+    daysOfWeek: number[] = []
+  ): Promise<Routine> => {
     const db = await getDatabase();
     const routine = await queryCreateRoutine(db, {
       id: await Crypto.randomUUID(),
@@ -84,15 +92,32 @@ export function RoutineProvider({ children }: { children: React.ReactNode }) {
       description,
       color,
       position: routines.length,
+      frequency,
+      daysOfWeek,
       isActive: true,
     });
     setRoutines((prev) => [...prev, routine]);
+    return routine;
   }, [routines]);
 
-  const updateRoutine = useCallback(async (id: string, updates: Partial<Pick<Routine, 'name' | 'description' | 'color'>>) => {
+  const updateRoutine = useCallback(async (
+    id: string,
+    updates: Partial<Pick<Routine, 'name' | 'description' | 'color' | 'frequency' | 'daysOfWeek'>>
+  ) => {
     const db = await getDatabase();
     await queryUpdateRoutine(db, id, updates);
     setRoutines((prev) => prev.map((r) => r.id === id ? { ...r, ...updates } : r));
+  }, []);
+
+  const reorderRoutines = useCallback(async (items: { id: string; position: number }[]) => {
+    const db = await getDatabase();
+    await queryUpdateRoutinePositions(db, items);
+    const posMap = new Map(items.map((i) => [i.id, i.position]));
+    setRoutines((prev) =>
+      prev
+        .map((r) => (posMap.has(r.id) ? { ...r, position: posMap.get(r.id)! } : r))
+        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+    );
   }, []);
 
   const deleteRoutine = useCallback(async (id: string) => {
@@ -191,6 +216,7 @@ export function RoutineProvider({ children }: { children: React.ReactNode }) {
       loadRoutines,
       addRoutine,
       updateRoutine,
+      reorderRoutines,
       deleteRoutine,
       getSubActivities,
       addSubActivity,
@@ -209,6 +235,7 @@ export function RoutineProvider({ children }: { children: React.ReactNode }) {
       loadRoutines,
       addRoutine,
       updateRoutine,
+      reorderRoutines,
       deleteRoutine,
       getSubActivities,
       addSubActivity,

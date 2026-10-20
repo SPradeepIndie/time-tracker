@@ -130,15 +130,32 @@ export default function AnalyticsScreen({ navigation }: Props) {
 
               {/* Productivity Time Card */}
               <View style={[s.metricCard, { backgroundColor: colors.card }]}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                  <AppIcon name="timer" size={18} color={colors.primary} />
-                  <Text style={s.metricTitle}>Productivity Time</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <AppIcon name="timer" size={18} color={colors.primary} />
+                    <Text style={[s.metricTitle, { marginBottom: 0 }]}>Productivity Time</Text>
+                  </View>
+                  <View style={{ backgroundColor: colors.primary + '18', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: colors.primary }}>
+                      {daily.productivityPercentage24h}% of 24h day
+                    </Text>
+                  </View>
                 </View>
-                <Text style={[s.metricBig, { color: colors.primary }]}>
+                <Text style={[s.metricBig, { color: colors.primary, marginTop: 4 }]}>
                   {formatProductivityTime(daily.productivityMinutes)}
                 </Text>
+                <View style={{ height: 6, backgroundColor: colors.border, borderRadius: 3, width: '100%', marginTop: 8, overflow: 'hidden' }}>
+                  <View
+                    style={{
+                      height: '100%',
+                      width: `${daily.productivityPercentage24h}%` as any,
+                      backgroundColor: colors.primary,
+                      borderRadius: 3,
+                    }}
+                  />
+                </View>
                 <Text style={s.metricSub}>
-                  Total focused task duration ({daily.completedTasks} completed / {daily.totalTasks} total tasks)
+                  Timed completed tasks duration ({daily.completedTasks} completed / {daily.totalTasks} total tasks)
                 </Text>
               </View>
 

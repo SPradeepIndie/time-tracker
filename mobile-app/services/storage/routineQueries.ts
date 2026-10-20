@@ -12,8 +12,8 @@ import { getOrCreateEncryptionKey, encrypt, decrypt } from './encryption';
 
 interface RoutineRow {
   id: string; remote_id: number | null; name: string; description: string;
-  color: string; position: number; is_active: number;
-  created_at: string; updated_at: string;
+  color: string; position: number; frequency?: string; days_of_week?: string;
+  is_active: number; created_at: string; updated_at: string;
 }
 interface SubActivityRow {
   id: string; remote_id: number | null; routine_id: string;
@@ -31,9 +31,18 @@ interface ActivityLogRow {
 // ── Converters ────────────────────────────────────────────────────────────────
 
 function rowToRoutine(r: RoutineRow): Routine {
+  let daysOfWeek: number[] = [];
+  try {
+    if (r.days_of_week) {
+      daysOfWeek = JSON.parse(r.days_of_week);
+    }
+  } catch {}
+
   return {
     id: r.id, remoteId: r.remote_id ?? undefined, name: r.name,
     description: r.description, color: r.color, position: r.position,
+    frequency: (r.frequency as any) || 'daily',
+    daysOfWeek,
     isActive: r.is_active === 1,
     createdAt: new Date(r.created_at), updatedAt: new Date(r.updated_at),
   };
@@ -77,18 +86,20 @@ export async function queryCreateRoutine(
   routine: Omit<Routine, 'createdAt' | 'updatedAt'>
 ): Promise<Routine> {
   const now = new Date().toISOString();
+  const freq = routine.frequency || 'daily';
+  const days = JSON.stringify(routine.daysOfWeek || []);
   await db.runAsync(
-    `INSERT INTO routines (id, remote_id, name, description, color, position, is_active, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,1,?,?);`,
-    [routine.id, routine.remoteId ?? null, routine.name, routine.description ?? '', routine.color, routine.position, now, now]
+    `INSERT INTO routines (id, remote_id, name, description, color, position, frequency, days_of_week, is_active, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,1,?,?);`,
+    [routine.id, routine.remoteId ?? null, routine.name, routine.description ?? '', routine.color, routine.position, freq, days, now, now]
   );
-  return { ...routine, isActive: true, createdAt: new Date(now), updatedAt: new Date(now) };
+  return { ...routine, frequency: freq, daysOfWeek: routine.daysOfWeek || [], isActive: true, createdAt: new Date(now), updatedAt: new Date(now) };
 }
 
 export async function queryUpdateRoutine(
   db: SQLiteDatabase,
   id: string,
-  updates: Partial<Pick<Routine, 'name' | 'description' | 'color' | 'position'>>
+  updates: Partial<Pick<Routine, 'name' | 'description' | 'color' | 'position' | 'frequency' | 'daysOfWeek'>>
 ): Promise<void> {
   const fields: string[] = [];
   const values: (string | number)[] = [];
@@ -96,9 +107,20 @@ export async function queryUpdateRoutine(
   if (updates.description !== undefined) { fields.push('description=?'); values.push(updates.description); }
   if (updates.color !== undefined)       { fields.push('color=?');       values.push(updates.color); }
   if (updates.position !== undefined)    { fields.push('position=?');    values.push(updates.position); }
+  if (updates.frequency !== undefined)   { fields.push('frequency=?');   values.push(updates.frequency); }
+  if (updates.daysOfWeek !== undefined)  { fields.push('days_of_week=?'); values.push(JSON.stringify(updates.daysOfWeek)); }
   fields.push('updated_at=?');
   values.push(new Date().toISOString(), id);
   await db.runAsync(`UPDATE routines SET ${fields.join(',')} WHERE id=?;`, values);
+}
+
+export async function queryUpdateRoutinePositions(
+  db: SQLiteDatabase,
+  items: { id: string; position: number }[]
+): Promise<void> {
+  for (const item of items) {
+    await db.runAsync('UPDATE routines SET position=? WHERE id=?;', [item.position, item.id]);
+  }
 }
 
 export async function queryDeleteRoutine(db: SQLiteDatabase, id: string): Promise<void> {

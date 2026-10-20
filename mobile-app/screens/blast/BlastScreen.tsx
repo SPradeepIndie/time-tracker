@@ -234,9 +234,10 @@ export default function BlastScreen() {
           <TouchableOpacity
             style={[s.modeBtn, mode === 'stopwatch' && s.modeBtnActive]}
             onPress={() => {
-              if (sessionState === 'idle') setMode('stopwatch');
+              if (sessionState === 'completed') resetSession();
+              setMode('stopwatch');
             }}
-            disabled={sessionState !== 'idle'}
+            disabled={sessionState === 'running' || sessionState === 'paused'}
           >
             <AppIcon
               name="stopwatch-outline"
@@ -251,9 +252,10 @@ export default function BlastScreen() {
           <TouchableOpacity
             style={[s.modeBtn, mode === 'timer' && s.modeBtnActive]}
             onPress={() => {
-              if (sessionState === 'idle') setMode('timer');
+              if (sessionState === 'completed') resetSession();
+              setMode('timer');
             }}
-            disabled={sessionState !== 'idle'}
+            disabled={sessionState === 'running' || sessionState === 'paused'}
           >
             <AppIcon
               name="timer-outline"
@@ -275,8 +277,11 @@ export default function BlastScreen() {
                 <TouchableOpacity
                   key={p.minutes}
                   style={[s.presetChip, active && s.presetChipActive]}
-                  onPress={() => handleSelectPreset(p.minutes)}
-                  disabled={sessionState !== 'idle'}
+                  onPress={() => {
+                    if (sessionState === 'completed') resetSession();
+                    handleSelectPreset(p.minutes);
+                  }}
+                  disabled={sessionState === 'running' || sessionState === 'paused'}
                 >
                   <Text style={[s.presetChipText, active && s.presetChipTextActive]}>
                     {p.label}
@@ -295,6 +300,8 @@ export default function BlastScreen() {
                 ? 'Ready to Start'
                 : sessionState === 'running'
                 ? 'Tracking Session…'
+                : sessionState === 'completed'
+                ? 'Session Completed'
                 : 'Paused'}
             </Text>
             <Text style={s.readoutTime}>{formatTime(currentSeconds)}</Text>
@@ -343,6 +350,22 @@ export default function BlastScreen() {
               <TouchableOpacity style={s.finishActionBtn} onPress={handleFinishSession}>
                 <AppIcon name="checkmark" size={22} color="#FFFFFF" />
                 <Text style={s.finishActionBtnText}>Finish</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {sessionState === 'completed' && (
+            <View style={s.actionRow}>
+              <TouchableOpacity style={s.resetActionBtn} onPress={handleReset}>
+                <AppIcon name="refresh" size={20} color={colors.textSecondary} />
+                <Text style={s.resetActionBtnText}>Reset</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={s.finishActionBtn}
+                onPress={() => setShowCompletionModal(true)}
+              >
+                <AppIcon name="clipboard-outline" size={22} color="#FFFFFF" />
+                <Text style={s.finishActionBtnText}>Record Task</Text>
               </TouchableOpacity>
             </View>
           )}

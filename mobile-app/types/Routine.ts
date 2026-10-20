@@ -12,6 +12,8 @@
 
 // ─── Routine ─────────────────────────────────────────────────────────────────
 
+export type RoutineFrequency = 'daily' | 'weekly';
+
 export interface Routine {
   id: string;              // UUID (local primary key)
   remoteId?: number;
@@ -19,6 +21,8 @@ export interface Routine {
   description?: string;    // Optional note
   color: string;           // Hex color for visual distinction in the list
   position: number;        // Display order
+  frequency?: RoutineFrequency; // 'daily' | 'weekly'
+  daysOfWeek?: number[];   // 0 = Sunday, 1 = Monday, ..., 6 = Saturday (for weekly)
   isActive: boolean;       // Soft delete / archive flag
   createdAt: Date;
   updatedAt: Date;

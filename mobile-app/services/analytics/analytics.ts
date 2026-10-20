@@ -72,6 +72,7 @@ export const ANALYTICS_WEIGHTS = {
 export interface DailyAnalytics {
   date: string;
   productivityMinutes: number;    // Code: T_prod in minutes | UI: Productivity Time
+  productivityPercentage24h: number; // Evaluated against 24 hours of the day (1440 min)
   goalHitRate: number;            // Code: G_day (0–100)     | UI: Daily Goals %
   routineHitRate: number;         // Code: R_day (0–100)     | UI: Routines %
   taskCompletionRate: number;     // Code: Task completion   | UI: Tasks %
@@ -113,7 +114,7 @@ async function getTaskStats(db: SQLiteDatabase, date: string): Promise<TaskStats
        COUNT(*) as total,
        SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) as completed,
        SUM(CASE
-         WHEN status IN ('completed','in-progress') AND duration_minutes IS NOT NULL
+         WHEN status = 'completed' AND duration_minutes IS NOT NULL
            THEN duration_minutes
          ELSE 0
        END) as productivity_minutes
@@ -174,9 +175,16 @@ export async function calculateDailyAnalytics(
     }
   }
 
+  // Calculate 24-hour day productivity percentage (1440 minutes = 24h)
+  const productivityPercentage24h = Math.min(
+    100,
+    Math.round(((taskStats.productivity_minutes / 1440) * 100) * 10) / 10
+  );
+
   return {
     date,
     productivityMinutes: taskStats.productivity_minutes,
+    productivityPercentage24h,
     goalHitRate: Math.round(goalHitRate),
     routineHitRate: Math.round(routineHitRate),
     taskCompletionRate: Math.round(taskCompletionRate),

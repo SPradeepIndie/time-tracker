@@ -138,6 +138,8 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
       description TEXT DEFAULT '',
       color       TEXT NOT NULL DEFAULT '#7C3AED',
       position    INTEGER NOT NULL DEFAULT 0,
+      frequency   TEXT NOT NULL DEFAULT 'daily',
+      days_of_week TEXT NOT NULL DEFAULT '[]',
       is_active   INTEGER NOT NULL DEFAULT 1,
       created_at  TEXT NOT NULL,
       updated_at  TEXT NOT NULL
@@ -218,7 +220,41 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
     );
   `);
 
-  // ── 13. Performance Indexes ────────────────────────────────────────────────
+  // ── 13. habits ─────────────────────────────────────────────────────────────
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS habits (
+      id         TEXT PRIMARY KEY,
+      remote_id  INTEGER,
+      name       TEXT NOT NULL,
+      color      TEXT NOT NULL DEFAULT '#7C3AED',
+      position   INTEGER NOT NULL DEFAULT 0,
+      is_active  INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
+
+  // ── 14. habit_logs ─────────────────────────────────────────────────────────
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS habit_logs (
+      id           TEXT PRIMARY KEY,
+      habit_id     TEXT NOT NULL REFERENCES habits(id) ON DELETE CASCADE,
+      date         TEXT NOT NULL,
+      is_completed INTEGER NOT NULL DEFAULT 0,
+      created_at   TEXT NOT NULL,
+      UNIQUE(habit_id, date)
+    );
+  `);
+
+  // ── 15. Column Migrations (Safe idempotent alters) ──────────────────────────
+  try {
+    await db.execAsync("ALTER TABLE routines ADD COLUMN frequency TEXT NOT NULL DEFAULT 'daily';");
+  } catch {}
+  try {
+    await db.execAsync("ALTER TABLE routines ADD COLUMN days_of_week TEXT NOT NULL DEFAULT '[]';");
+  } catch {}
+
+  // ── 16. Performance Indexes ────────────────────────────────────────────────
   await db.execAsync(`
     CREATE INDEX IF NOT EXISTS idx_tracks_status_type ON tracks(status, task_type);
     CREATE INDEX IF NOT EXISTS idx_tracks_created_at ON tracks(created_at);
@@ -230,6 +266,8 @@ async function initDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_routine_logs_routine_date ON routine_activity_logs(routine_id, date);
     CREATE INDEX IF NOT EXISTS idx_checklist_items_list_id ON checklist_items(list_id);
     CREATE INDEX IF NOT EXISTS idx_sticky_notes_created_at ON sticky_notes(created_at);
+    CREATE INDEX IF NOT EXISTS idx_habits_active ON habits(is_active);
+    CREATE INDEX IF NOT EXISTS idx_habit_logs_date ON habit_logs(date);
   `);
 }
 
